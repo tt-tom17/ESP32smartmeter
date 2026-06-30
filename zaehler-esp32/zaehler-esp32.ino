@@ -42,10 +42,9 @@
 
 // ─── Konfiguration (Defaults; zur Laufzeit über Web + NVS änderbar) ───────────
 
-const char* MQTT_SERVER    = "192.168.179.55";   // ioBroker-Host
-const int   MQTT_PORT      = 1883;
-const char* MQTT_USER      = "";                 // leer = anonym
-const char* MQTT_PASS      = "";
+// MQTT-Defaults (Host/Port/User/PW zur Laufzeit über Web + NVS änderbar)
+#define MQTT_SERVER_DEF  "192.168.179.55"   // ioBroker-Host
+#define MQTT_PORT_DEF    1883
 const char* MQTT_CLIENT_ID = "esp32-zaehler";
 
 const char* MQTT_HEAT_PREFIX  = "waermezaehler/";   // -> waermezaehler/data/6_8
@@ -104,6 +103,11 @@ uint8_t  heatRxPin    = HEAT_RX_DEF;
 bool     stromEnabled = true;
 uint8_t  stromRxPin   = STROM_RX_DEF;
 uint16_t stromMqttS   = STROM_MQTT_DEF_S;   // MQTT-Sendeintervall Strom (Sekunden)
+// MQTT-Broker-Konfiguration (aus NVS)
+String   mqttServer = MQTT_SERVER_DEF;
+uint16_t mqttPort   = MQTT_PORT_DEF;
+String   mqttUser   = "";                   // leer = anonym
+String   mqttPass   = "";
 
 unsigned long heatIntervalMs() { return (unsigned long)heatIntervalH * 3600000UL; }
 unsigned long stromMqttMs()    { return (unsigned long)stromMqttS * 1000UL; }
@@ -153,9 +157,18 @@ void ensureWifi() {
 void ensureMqtt() {
   if (mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
   String lwt = String(MQTT_HEAT_PREFIX) + "online";
-  if (mqtt.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS, lwt.c_str(), 0, true, "0")) {
-    mqtt.publish(lwt.c_str(), "1", true);
-  }
+  bool ok;
+  if (mqttUser.length())
+    ok = mqtt.connect(MQTT_CLIENT_ID, mqttUser.c_str(), mqttPass.c_str(), lwt.c_str(), 0, true, "0");
+  else
+    ok = mqtt.connect(MQTT_CLIENT_ID, lwt.c_str(), 0, true, "0");   // anonym + LWT
+  if (ok) mqtt.publish(lwt.c_str(), "1", true);
+}
+
+// MQTT-Server/Port aus aktueller Konfig setzen und Verbindung neu aufbauen
+void applyMqtt() {
+  mqtt.disconnect();
+  mqtt.setServer(mqttServer.c_str(), mqttPort);   // ensureMqtt() verbindet neu
 }
 
 // '.' und '*' -> '_'  =>  "6.26*01" -> "6_26_01"  (MQTT-tauglich)
@@ -509,6 +522,10 @@ void handleApi() {
   j += "\"uptime_s\":" + String(millis() / 1000);
   j += ",\"rssi\":" + String(WiFi.RSSI());
   j += ",\"mqtt\":" + String(mqtt.connected() ? "true" : "false");
+  j += ",\"mqtt_host\":\"" + jsonEscape(mqttServer) + "\"";
+  j += ",\"mqtt_port\":" + String(mqttPort);
+  j += ",\"mqtt_user\":\"" + jsonEscape(mqttUser) + "\"";
+  j += ",\"mqtt_haspw\":" + String(mqttPass.length() ? "true" : "false");
 
   // Strom
   j += ",\"strom\":{";
@@ -598,6 +615,25 @@ void handleSetStrom() {
   web.send(200, "text/plain", "ok");
 }
 
+// MQTT-Broker konfigurieren: host, port, user, pw (alle optional). Leeres pw-Feld
+// lässt das Passwort UNVERÄNDERT (sonst würde jedes Speichern es löschen).
+void handleSetMqtt() {
+  if (web.hasArg("host")) { mqttServer = web.arg("host"); prefs.putString("mqtt_host", mqttServer); }
+  if (web.hasArg("port")) {
+    int p = web.arg("port").toInt();
+    if (p > 0 && p <= 65535) { mqttPort = (uint16_t)p; prefs.putUShort("mqtt_port", mqttPort); }
+  }
+  if (web.hasArg("user")) { mqttUser = web.arg("user"); prefs.putString("mqtt_user", mqttUser); }
+  if (web.hasArg("pw")) {
+    String pw = web.arg("pw");
+    if (pw.length()) { mqttPass = pw; prefs.putString("mqtt_pass", mqttPass); }
+  }
+  Serial.printf("[CFG] MQTT %s:%u user=%s\n",
+                mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
+  applyMqtt();
+  web.send(200, "text/plain", "ok");
+}
+
 void setupWebOta() {
   web.on("/update", HTTP_GET, []() {
     web.send_P(200, "text/html", UPDATE_PAGE);
@@ -644,15 +680,20 @@ void setup() {
   stromMqttS    = prefs.getUShort("strom_s", STROM_MQTT_DEF_S);
   if (stromMqttS < STROM_MQTT_MIN_S) stromMqttS = STROM_MQTT_MIN_S;
   if (stromMqttS > STROM_MQTT_MAX_S) stromMqttS = STROM_MQTT_MAX_S;
-  Serial.printf("[CFG] Wärme %s %uh TX%u RX%u | Strom %s GPIO%u\n",
+  mqttServer = prefs.getString("mqtt_host", MQTT_SERVER_DEF);
+  mqttPort   = prefs.getUShort("mqtt_port", MQTT_PORT_DEF);
+  mqttUser   = prefs.getString("mqtt_user", "");
+  mqttPass   = prefs.getString("mqtt_pass", "");
+  Serial.printf("[CFG] Wärme %s %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
                 heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin,
-                stromEnabled ? "AN" : "AUS", stromRxPin);
+                stromEnabled ? "AN" : "AUS", stromRxPin,
+                mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
 
   applyStrom();                      // Strom-UART je nach Konfig starten
 
   ensureWifi();
 
-  mqtt.setServer(MQTT_SERVER, MQTT_PORT);
+  mqtt.setServer(mqttServer.c_str(), mqttPort);
   mqtt.setBufferSize(512);
   mqtt.setKeepAlive(60);
 
@@ -668,6 +709,7 @@ void setup() {
   web.on("/api",       handleApi);
   web.on("/setheat",   handleSetHeat);
   web.on("/setstrom",  handleSetStrom);
+  web.on("/setmqtt",   handleSetMqtt);
   web.on("/read",      [](){ readHeat(); lastHeat = millis(); web.send(200, "text/plain", "ok"); });
   web.on("/toggle",    [](){ reqIdx = 1 - reqIdx; web.send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });
   setupWebOta();

@@ -25,8 +25,9 @@ td.u{color:#94a3b8;text-align:right;white-space:nowrap}
 .s{color:#94a3b8;font-size:.82rem}
 button{background:#2563eb;color:#fff;border:0;border-radius:9px;padding:12px 16px;font-size:.95rem;margin:4px 4px 4px 0;cursor:pointer;min-height:44px}
 button.alt{background:#334155}
-select,input[type=number]{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:11px;font-size:1rem;min-height:44px}
+select,input{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:11px;font-size:1rem;min-height:44px}
 input[type=number]{width:90px}
+input:not([type=number]):not([type=file]){width:170px}
 .pill{padding:4px 10px;border-radius:999px;font-size:.8rem;font-weight:600}
 .on{background:#14532d;color:#bbf7d0}.off{background:#7f1d1d;color:#fecaca}
 a.btnlink{display:block;text-align:center;background:#334155;color:#fff;text-decoration:none;padding:14px;border-radius:10px;margin:10px 0 2px;font-weight:600}
@@ -38,8 +39,14 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Update</a></nav>
 <div class=card><h2>Verbindung</h2>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
- <div class=row><span>MQTT</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Uptime</span><b id=up>–</b></div></div>
+<div class=card><h2>MQTT (ioBroker)</h2>
+ <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
+ <div class=row><span>Host/IP</span><input id=mhost></div>
+ <div class=row><span>Port</span><input type=number id=mport min=1 max=65535></div>
+ <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
+ <div class=row><span>Passwort</span><input type=password id=mpw placeholder="leer = unverändert"></div>
+ <button onclick=saveMqtt()>Speichern</button><div class=s id=mmsg></div></div>
 <div class=card><h2>⚡ Strom</h2>
  <div class=big><span id=leist>–</span> W</div>
  <div class=row><span>Bezug</span><b id=bezug>–</b></div>
@@ -54,9 +61,18 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <script>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
+function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
+ '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
+ '&pw='+encodeURIComponent(mpw.value);
+ fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
 async function tick(){try{const d=await(await fetch('/api')).json();
  rssi.textContent=d.rssi+' dBm';
  pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ var ae=document.activeElement;
+ if(ae!==mhost)mhost.value=d.mqtt_host||'';
+ if(ae!==mport)mport.value=d.mqtt_port||1883;
+ if(ae!==muser)muser.value=d.mqtt_user||'';
+ if(ae!==mpw)mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
  up.textContent=Math.floor(d.uptime_s/3600)+'h '+Math.floor(d.uptime_s/60)%60+'m';
  leist.textContent=d.strom.leistung_w??'–';
  bezug.textContent=(d.strom.bezug_kwh??'–')+' kWh';
