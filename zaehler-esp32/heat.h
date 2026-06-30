@@ -83,8 +83,10 @@ void publishHeat() {
         int s;
         if ((s = vl.indexOf('*')) >= 0) vl = vl.substring(0, s);
         if ((s = rl.indexOf('*')) >= 0) rl = rl.substring(0, s);
-        mqtt.publish((heatPrefix() + "vorlauf_c").c_str(),   vl.c_str(), true);
-        mqtt.publish((heatPrefix() + "ruecklauf_c").c_str(), rl.c_str(), true);
+        mqtt.publish((heatPrefix() + "vorlauf_c").c_str(),          vl.c_str(), true);
+        mqtt.publish((heatPrefix() + "vorlauf_c/unit").c_str(),     "°C",       true);
+        mqtt.publish((heatPrefix() + "ruecklauf_c").c_str(),        rl.c_str(), true);
+        mqtt.publish((heatPrefix() + "ruecklauf_c/unit").c_str(),   "°C",       true);
       }
     }
   }
