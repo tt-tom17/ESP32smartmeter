@@ -31,22 +31,17 @@ input:not([type=number]):not([type=file]){width:170px}
 .pill{padding:4px 10px;border-radius:999px;font-size:.8rem;font-weight:600}
 .on{background:#14532d;color:#bbf7d0}.off{background:#7f1d1d;color:#fecaca}
 a.btnlink{display:block;text-align:center;background:#334155;color:#fff;text-decoration:none;padding:14px;border-radius:10px;margin:10px 0 2px;font-weight:600}
+.foot{text-align:center;color:#64748b;font-size:.78rem;margin:16px 12px 24px}
 )CSS";
 
 const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Zähler</title><link rel=stylesheet href=/style.css></head><body>
-<nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Update</a></nav>
+<nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>Verbindung</h2>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
+ <div class=row><span>MQTT (ioBroker)</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Uptime</span><b id=up>–</b></div></div>
-<div class=card><h2>MQTT (ioBroker)</h2>
- <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
- <div class=row><span>Host/IP</span><input id=mhost></div>
- <div class=row><span>Port</span><input type=number id=mport min=1 max=65535></div>
- <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
- <div class=row><span>Passwort</span><input type=password id=mpw placeholder="leer = unverändert"></div>
- <button onclick=saveMqtt()>Speichern</button><div class=s id=mmsg></div></div>
 <div class=card><h2>⚡ Strom</h2>
  <div class=big><span id=leist>–</span> W</div>
  <div class=row><span>Bezug</span><b id=bezug>–</b></div>
@@ -58,21 +53,15 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <div class=row><span>Status</span><span id=hs class=pill>–</span></div>
  <div class=row><span>nächste Lesung</span><b id=next>–</b></div>
  <a class=btnlink href=/waerme>Alle Wärmewerte &rarr;</a></div>
+<div class=foot>Firmware v<span id=fwv>–</span> · Build <span id=fwb>–</span></div>
 <script>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
-function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
- '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
- '&pw='+encodeURIComponent(mpw.value);
- fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
 async function tick(){try{const d=await(await fetch('/api')).json();
  rssi.textContent=d.rssi+' dBm';
+ if(d.fw_ver!=null)fwv.textContent=d.fw_ver;
+ if(d.fw_build)fwb.textContent=d.fw_build;
  pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
- var ae=document.activeElement;
- if(ae!==mhost)mhost.value=d.mqtt_host||'';
- if(ae!==mport)mport.value=d.mqtt_port||1883;
- if(ae!==muser)muser.value=d.mqtt_user||'';
- if(ae!==mpw)mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
  up.textContent=Math.floor(d.uptime_s/3600)+'h '+Math.floor(d.uptime_s/60)%60+'m';
  leist.textContent=d.strom.leistung_w??'–';
  bezug.textContent=(d.strom.bezug_kwh??'–')+' kWh';
@@ -89,7 +78,7 @@ tick();setInterval(tick,3000);
 const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Strom</title><link rel=stylesheet href=/style.css></head><body>
-<nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Update</a></nav>
+<nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>⚡ Stromzähler</h2>
  <div class=row><span>Auslesen</span><button id=en onclick=tEn()>–</button></div>
  <div class=row><span>Lesekopf-GPIO</span><select id=gpio></select></div>
@@ -123,7 +112,7 @@ tick();setInterval(tick,3000);
 const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Wärme</title><link rel=stylesheet href=/style.css></head><body>
-<nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme class=active>Wärme</a><a href=/update>Update</a></nav>
+<nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme class=active>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>🔥 Wärmezähler</h2>
  <div class=row><span>Auslesen</span><button id=en onclick=tEn()>–</button></div>
  <div class=row><span>Leseintervall</span><span><input type=number id=ih min=1 max=24> h</span></div>
@@ -168,13 +157,35 @@ tick();setInterval(tick,3000);
 
 const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Update</title><link rel=stylesheet href=/style.css></head><body>
-<nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update class=active>Update</a></nav>
+<title>Einstellungen</title><link rel=stylesheet href=/style.css></head><body>
+<nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update class=active>Einstellungen</a></nav>
+<div class=card><h2>MQTT (ioBroker)</h2>
+ <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
+ <div class=row><span>Host/IP</span><input id=mhost></div>
+ <div class=row><span>Port</span><input type=number id=mport min=1 max=65535></div>
+ <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
+ <div class=row><span>Passwort</span><input type=password id=mpw placeholder="leer = unverändert"></div>
+ <button onclick=saveMqtt()>Speichern</button><div class=s id=mmsg></div></div>
 <div class=card><h2>Firmware-Update</h2>
 <p class=s>Arduino-IDE: <b>Sketch &rarr; Kompilierte Binärdatei exportieren</b>, dann die <code>.ino.bin</code> hier wählen. (PlatformIO: <code>firmware.bin</code>)</p>
 <input type=file id=file accept='.bin'><br><button onclick='go()'>Flashen</button>
 <pre id=p style='font-size:1.3rem'></pre></div>
-<script>function go(){var f=document.getElementById('file').files[0];if(!f)return;
+<script>
+function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
+function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
+ '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
+ '&pw='+encodeURIComponent(mpw.value);
+ fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
+async function tick(){try{const d=await(await fetch('/api')).json();
+ pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ var ae=document.activeElement;
+ if(ae!==mhost)mhost.value=d.mqtt_host||'';
+ if(ae!==mport)mport.value=d.mqtt_port||1883;
+ if(ae!==muser)muser.value=d.mqtt_user||'';
+ if(ae!==mpw)mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
+}catch(e){}}
+tick();setInterval(tick,3000);
+function go(){var f=document.getElementById('file').files[0];if(!f)return;
 var x=new XMLHttpRequest(),d=new FormData();d.append('f',f);
 x.upload.onprogress=function(e){p.textContent=Math.round(e.loaded/e.total*100)+'%';};
 x.onloadend=function(){p.textContent=x.responseText||'fertig';};

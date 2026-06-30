@@ -52,6 +52,13 @@ const char* MQTT_STROM_PREFIX = "stromzaehler/";    // -> stromzaehler/data/16_7
 
 const char* HOSTNAME       = "esp32-zaehler";       // OTA + Hostname
 
+// ─── Firmware-Version ─────────────────────────────────────────────────────────
+// FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
+// (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
+// ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
+#define FW_VERSION  1
+#define FW_BUILD    (__DATE__ " " __TIME__)
+
 // Wärmezähler (UART1) — Default-Pins (Web-änderbar)
 #define HEAT_TX_DEF   17     // -> Lesekopf Rx (300 Baud Anfrage)
 #define HEAT_RX_DEF   16     // <- Lesekopf Tx (Datenbaud Antwort)
@@ -539,6 +546,8 @@ void handleApi() {
   j += ",\"mqtt_port\":" + String(mqttPort);
   j += ",\"mqtt_user\":\"" + jsonEscape(mqttUser) + "\"";
   j += ",\"mqtt_haspw\":" + String(mqttPass.length() ? "true" : "false");
+  j += ",\"fw_ver\":" + String(FW_VERSION);
+  j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
 
   // Strom
   j += ",\"strom\":{";
