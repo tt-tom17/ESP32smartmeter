@@ -1,0 +1,17 @@
+# Lokale Zugangsdaten — NIE committen
+secrets.h
+**/secrets.h
+
+# Arduino-Build-Artefakte
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.d.o
+*.a
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
