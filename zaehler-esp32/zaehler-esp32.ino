@@ -72,7 +72,11 @@ int reqIdx = 0;
 // Stromzähler (UART2, Hichi SML) — Default-Pin (Web-änderbar)
 #define STROM_RX_DEF  27     // <- Hichi Tx (Daten vom Lesekopf)
 #define SML_INVERT    false  // manche Hichi-Köpfe invertieren -> ggf. true testen
-const unsigned long STROM_MQTT_MS  = 10000;  // SML kommt 1-2x/s; MQTT gedrosselt
+// Strom-Sendeintervall (MQTT) — Pendant zu Tasmota TelePeriod, Web-einstellbar (NVS).
+// Der SML-Zähler sendet selbst 1-2x/s; schneller als ~1-2 s bringt keine neuen Werte.
+#define STROM_MQTT_MIN_S  2
+#define STROM_MQTT_MAX_S  300
+#define STROM_MQTT_DEF_S  10
 const unsigned long STROM_STALE_MS = 30000;  // ohne Telegramm -> "stale"
 
 #define TELEGRAM_BUF 2600
@@ -98,8 +102,10 @@ uint8_t  heatTxPin    = HEAT_TX_DEF;
 uint8_t  heatRxPin    = HEAT_RX_DEF;
 bool     stromEnabled = true;
 uint8_t  stromRxPin   = STROM_RX_DEF;
+uint16_t stromMqttS   = STROM_MQTT_DEF_S;   // MQTT-Sendeintervall Strom (Sekunden)
 
 unsigned long heatIntervalMs() { return (unsigned long)heatIntervalH * 3600000UL; }
+unsigned long stromMqttMs()    { return (unsigned long)stromMqttS * 1000UL; }
 
 // Wärme-Werte (generisch je Code)
 String   heatCode[HEAT_MAX], heatVal[HEAT_MAX], heatUnit[HEAT_MAX], heatRaw[HEAT_MAX];
@@ -553,8 +559,9 @@ const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Update</a></nav>
 <div class=card><h2>⚡ Stromzähler</h2>
  <div class=row><span>Auslesen</span><button id=en onclick=tEn()>–</button></div>
- <div class=row><span>Lesekopf-GPIO</span><span><select id=gpio></select>
-  <button onclick=saveG()>Speichern</button></span></div>
+ <div class=row><span>Lesekopf-GPIO</span><select id=gpio></select></div>
+ <div class=row><span>Sendeintervall (MQTT)</span><span><input type=number id=si min=2 max=300> s</span></div>
+ <button onclick=save()>Speichern</button>
  <div class=s id=msg></div>
  <div class=row><span>Status</span><span id=ss class=pill>–</span></div></div>
 <div class=card><h2>Alle Werte</h2><table id=tbl></table>
@@ -566,10 +573,12 @@ function opt(sel,a){sel.innerHTML='';for(const p of a){var o=document.createElem
 opt(gpio,INPINS);
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 function tEn(){fetch('/setstrom?en='+(curEn?0:1)).then(()=>setTimeout(tick,200));}
-function saveG(){fetch('/setstrom?rx='+gpio.value).then(()=>{msg.textContent='gespeichert: GPIO'+gpio.value;});}
+function save(){fetch('/setstrom?rx='+gpio.value+'&s='+si.value).then(()=>{msg.textContent='gespeichert';});}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom;
  curEn=s.enabled;en.textContent=s.enabled?'AN':'AUS';en.className=s.enabled?'':'alt';
- if(document.activeElement!==gpio)gpio.value=s.gpio;
+ const ae=document.activeElement;
+ if(ae!==gpio)gpio.value=s.gpio;
+ if(ae!==si)si.value=s.send_s;
  pill(ss,s.enabled&&s.status=='ok',s.enabled?s.status:'aus');
  let h='';for(const x of s.codes)h+='<tr><td>'+x.code+'</td><td><b>'+x.value+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
@@ -644,6 +653,7 @@ void handleApi() {
   j += ",\"strom\":{";
   j += "\"enabled\":" + String(stromEnabled ? "true" : "false");
   j += ",\"gpio\":" + String(stromRxPin);
+  j += ",\"send_s\":" + String(stromMqttS);
   j += ",\"status\":\"" + jsonEscape(stromStatus) + "\"";
   if (!isnan(stromBezugWh))   j += ",\"bezug_kwh\":" + String(stromBezugWh / 1000.0, 3);
   if (!isnan(stromEinspWh))   j += ",\"einspeisung_kwh\":" + String(stromEinspWh / 1000.0, 3);
@@ -715,6 +725,14 @@ void handleSetStrom() {
     int g = web.arg("rx").toInt();
     if (validGpio(g)) { stromRxPin = g; prefs.putUChar("strom_rx", g); changed = true; }
   }
+  if (web.hasArg("s")) {                       // MQTT-Sendeintervall (s)
+    int s = web.arg("s").toInt();
+    if (s < STROM_MQTT_MIN_S) s = STROM_MQTT_MIN_S;
+    if (s > STROM_MQTT_MAX_S) s = STROM_MQTT_MAX_S;
+    stromMqttS = (uint16_t)s;
+    prefs.putUShort("strom_s", stromMqttS);
+    mqtt.publish((String(MQTT_STROM_PREFIX) + "send_s").c_str(), String(stromMqttS).c_str(), true);
+  }
   if (changed) applyStrom();
   web.send(200, "text/plain", "ok");
 }
@@ -777,6 +795,9 @@ void setup() {
   heatRxPin     = prefs.getUChar("heat_rx", HEAT_RX_DEF);
   stromEnabled  = prefs.getUChar("strom_en", 1) != 0;
   stromRxPin    = prefs.getUChar("strom_rx", STROM_RX_DEF);
+  stromMqttS    = prefs.getUShort("strom_s", STROM_MQTT_DEF_S);
+  if (stromMqttS < STROM_MQTT_MIN_S) stromMqttS = STROM_MQTT_MIN_S;
+  if (stromMqttS > STROM_MQTT_MAX_S) stromMqttS = STROM_MQTT_MAX_S;
   Serial.printf("[CFG] Wärme %s %uh TX%u RX%u | Strom %s GPIO%u\n",
                 heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin,
                 stromEnabled ? "AN" : "AUS", stromRxPin);
@@ -821,7 +842,7 @@ void loop() {
 
   unsigned long now = millis();
 
-  if (now - lastStromMqtt >= STROM_MQTT_MS) {
+  if (now - lastStromMqtt >= stromMqttMs()) {
     lastStromMqtt = now;
     publishStrom();
   }

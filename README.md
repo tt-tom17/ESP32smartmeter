@@ -77,7 +77,10 @@ Oben auf jeder Seite eine Navigationsleiste: **Start · Strom · Wärme · Updat
 - **Start (`/`)** — Übersicht: aktuelle Strom- (W, Bezug, Einspeisung) und
   Wärmewerte (6.8 MWh), WLAN-RSSI, **MQTT-Verbindungsstatus**, Uptime.
 - **Strom (`/strom`)** — **alle** ausgelesenen OBIS-Werte (generischer SML-Scan),
-  Schalter **Auslesen AN/AUS**, **Lesekopf-GPIO** auswählen + speichern.
+  Schalter **Auslesen AN/AUS**, **Lesekopf-GPIO** und **MQTT-Sendeintervall
+  (2–300 s)** auswählen + speichern. Das Sendeintervall ist das Pendant zu
+  Tasmotas `TelePeriod` (dort min. 10 s); der SML-Zähler selbst sendet 1–2×/s,
+  schneller als ~2 s bringt also keine neuen Werte.
 - **Wärme (`/waerme`)** — alle UH50-Werte, Schalter **Auslesen AN/AUS**,
   **Leseintervall 1–24 h**, **TX-/RX-GPIO** auswählen, „Jetzt lesen", Sign-on
   `/?! ↔ /#!` umschalten.
@@ -87,7 +90,7 @@ Alle Einstellungen (an/aus, Intervall, GPIOs) liegen im **NVS (`Preferences`,
 Namespace `zaehler`)** und überstehen einen Reboot.
 
 Steuer-Endpunkte (auch per `curl`): `GET /api` (JSON),
-`GET /setheat?en=0|1&h=N&tx=G&rx=G`, `GET /setstrom?en=0|1&rx=G`,
+`GET /setheat?en=0|1&h=N&tx=G&rx=G`, `GET /setstrom?en=0|1&rx=G&s=Sek`,
 `GET /read`, `GET /toggle`.
 
 ## Firmware-Update (Web-OTA)
@@ -107,7 +110,7 @@ exportieren**, die `.ino.bin` hochladen. Zuverlässiger als ArduinoOTA/UDP.
 - `waermezaehler/status`, `waermezaehler/interval_h`, `waermezaehler/online` (LWT)
 - `stromzaehler/bezug_kwh`, `stromzaehler/einspeisung_kwh`, `stromzaehler/leistung_w`
 - `stromzaehler/data/<OBIS>` … (alle generisch geparsten Werte) + `.../unit`
-- `stromzaehler/status`
+- `stromzaehler/status`, `stromzaehler/send_s` (MQTT-Sendeintervall)
 
 ## Bekannte Grenzen
 - SML-CRC wird nicht geprüft (Resync über Escape-Sequenzen).
