@@ -7,8 +7,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
-// ─── MQTT-Defaults (Host/Port/User/PW zur Laufzeit über Web + NVS änderbar) ───
-#define MQTT_SERVER_DEF  "192.168.179.55"   // ioBroker-Host
+// ─── MQTT-Defaults (alles zur Laufzeit über Web + NVS änderbar) ───────────────
+// MQTT ist standardmäßig AUS — das Gerät läuft auch als reines Web-Display. Über
+// die Einstellungen einschalten und Broker eintragen. Die Default-IP ist nur ein
+// neutraler Platzhalter, der ohnehin per Weboberfläche überschrieben wird.
+#define MQTT_ENABLED_DEF false
+#define MQTT_SERVER_DEF  "192.168.1.10"
 #define MQTT_PORT_DEF    1883
 static const char* MQTT_CLIENT_ID = "esp32-zaehler";
 
@@ -22,7 +26,7 @@ static const char* HOSTNAME = "esp32-zaehler";             // OTA + Hostname
 // FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
 // (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
 // ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
-#define FW_VERSION  6
+#define FW_VERSION  7
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Wärmezähler (UART1) — Default-Pins (Web-änderbar) ────────────────────────

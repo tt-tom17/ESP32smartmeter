@@ -22,6 +22,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += "\"uptime_s\":" + String(millis() / 1000);
   j += ",\"rssi\":" + String(WiFi.RSSI());
   j += ",\"mqtt\":" + String(mqtt.connected() ? "true" : "false");
+  j += ",\"mqtt_en\":" + String(mqttEnabled ? "true" : "false");
   j += ",\"mqtt_root\":\"" + jsonEscape(mqttRoot) + "\"";
   j += ",\"mqtt_host\":\"" + jsonEscape(mqttServer) + "\"";
   j += ",\"mqtt_port\":" + String(mqttPort);
@@ -121,6 +122,10 @@ void handleSetStrom(AsyncWebServerRequest* req) {
 // MQTT-Broker konfigurieren: host, port, user, pw (alle optional). Leeres pw-Feld
 // lässt das Passwort UNVERÄNDERT (sonst würde jedes Speichern es löschen).
 void handleSetMqtt(AsyncWebServerRequest* req) {
+  if (reqHas(req, "en")) {                          // MQTT global an/aus
+    mqttEnabled = reqArg(req, "en").toInt() != 0;
+    prefs.putUChar("mqtt_en", mqttEnabled ? 1 : 0);
+  }
   if (reqHas(req, "root")) {                       // Haupttopic; '/'-Enden abschneiden
     mqttRoot = reqArg(req, "root");
     mqttRoot.trim();

@@ -2,9 +2,10 @@
 
 Ein ESP32-WROOM-32 liest **Wärmezähler** (Landis+Gyr UH50/T550, D0/IEC 62056-21)
 und **Stromzähler** (SML über Hichi TTL-IR-Lesekopf), zeigt alles auf einer
-eigenen, handytauglichen Weboberfläche und schickt es per **MQTT** an einen
-Broker (z. B. Mosquitto / ioBroker). Broker und Haupttopic sind zur Laufzeit
-über die Weboberfläche einstellbar.
+eigenen, handytauglichen Weboberfläche und schickt es optional per **MQTT** an
+einen Broker (z. B. Mosquitto / ioBroker). MQTT ist **standardmäßig deaktiviert** —
+ohne Broker läuft das Gerät als reines Web-Display. MQTT-Schalter, Broker und
+Haupttopic sind zur Laufzeit über die Weboberfläche einstellbar.
 
 ## Projektstruktur
 ```
@@ -101,8 +102,9 @@ aktivieren — oder bequemer das Web-OTA (siehe unten).
 3. Seriellen Monitor @115200 öffnen → IP-Adresse notieren.
 4. Im Browser `http://<IP>/` öffnen → Live-Anzeige; `http://<IP>/api` liefert das
    rohe JSON (gut zum Debuggen).
-5. Auf **Einstellungen** den MQTT-Broker (Host/IP, Port, ggf. User/PW) und bei
-   Bedarf das **Haupttopic** eintragen → speichern, der ESP verbindet sich neu.
+5. Optional: Auf **Einstellungen** MQTT **aktivieren**, den Broker (Host/IP, Port,
+   ggf. User/PW) und bei Bedarf das **Haupttopic** eintragen → speichern, der ESP
+   verbindet sich neu. (MQTT ist im Auslieferungszustand **aus**.)
 
 ## Weboberfläche (handytauglich, mehrseitig)
 Die Oberfläche läuft auf einem **asynchronen Webserver** — sie bleibt auch
@@ -121,9 +123,9 @@ und Build-Zeitstempel (zeigt, ob ein OTA-Flash wirklich angekommen ist).
     Das Sendeintervall ist das Pendant zu Tasmotas `TelePeriod`; der SML-Zähler
     sendet selbst 1–2×/s, schneller als ~2 s bringt also keine neuen Werte.
   - **🔥 Wärme:** Auslesen AN/AUS, **Leseintervall 1–24 h**, TX-/RX-GPIO.
-  - **MQTT:** Verbindungsstatus, **Haupttopic**, **Host/IP, Port, User, Passwort**
-    (speichern → verbindet neu; leeres Passwortfeld lässt das gespeicherte PW
-    unverändert).
+  - **MQTT:** **An/Aus-Schalter (Default aus)**, Verbindungsstatus, **Haupttopic**,
+    **Host/IP, Port, User, Passwort** (speichern → verbindet neu; leeres
+    Passwortfeld lässt das gespeicherte PW unverändert).
   - **Firmware-Update** (Web-OTA, siehe unten).
 
 Alle Einstellungen (an/aus, Intervalle, GPIOs, MQTT-Broker, Haupttopic) liegen im
@@ -131,10 +133,10 @@ Alle Einstellungen (an/aus, Intervalle, GPIOs, MQTT-Broker, Haupttopic) liegen i
 
 Steuer-Endpunkte (auch per `curl`): `GET /api` (JSON),
 `GET /setheat?en=0|1&h=N&tx=G&rx=G`, `GET /setstrom?en=0|1&rx=G&s=Sek`,
-`GET /setmqtt?root=...&host=...&port=1883&user=...&pw=...`, `GET /read` (Wärme
-sofort lesen).
-Hinweis: `/api` liefert `mqtt_root/host/port/user` + `mqtt_haspw`, das **Passwort
-selbst wird nie ausgeliefert**.
+`GET /setmqtt?en=0|1&root=...&host=...&port=1883&user=...&pw=...`, `GET /read`
+(Wärme sofort lesen).
+Hinweis: `/api` liefert `mqtt_en` + `mqtt_root/host/port/user` + `mqtt_haspw`, das
+**Passwort selbst wird nie ausgeliefert**.
 
 ## Firmware-Update (Web-OTA)
 `http://<IP>/update` (Seite **Einstellungen**) → Firmware hochladen:

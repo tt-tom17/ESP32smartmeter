@@ -40,7 +40,7 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>Verbindung</h2>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
- <div class=row><span>MQTT (ioBroker)</span><span id=mqtt class=pill>–</span></div>
+ <div class=row><span>MQTT</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Uptime</span><b id=up>–</b></div></div>
 <div class=card><h2>⚡ Strom</h2>
  <div class=big><span id=leist>–</span> W</div>
@@ -61,7 +61,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();
  rssi.textContent=d.rssi+' dBm';
  if(d.fw_ver!=null)fwv.textContent=d.fw_ver;
  if(d.fw_build)fwb.textContent=d.fw_build;
- pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ if(!d.mqtt_en)pill(mqtt,false,'aus');else pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
  up.textContent=Math.floor(d.uptime_s/3600)+'h '+Math.floor(d.uptime_s/60)%60+'m';
  leist.textContent=d.strom.leistung_w??'–';
  bezug.textContent=(d.strom.bezug_kwh??'–')+' kWh';
@@ -136,7 +136,8 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <div class=row><span>TX-GPIO (&rarr; Lesekopf Rx)</span><select id=htx></select></div>
  <div class=row><span>RX-GPIO (&larr; Lesekopf Tx)</span><select id=hrx></select></div>
  <button onclick=hSave()>Speichern</button><div class=s id=hmsg></div></div>
-<div class=card><h2>MQTT (ioBroker)</h2>
+<div class=card><h2>MQTT</h2>
+ <div class=row><span>MQTT aktiv</span><button id=men onclick=mToggle()>–</button></div>
  <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Haupttopic</span><input id=mroot placeholder=ESP32smartmeter></div>
  <div class=row><span>Host/IP</span><input id=mhost></div>
@@ -159,6 +160,8 @@ let sEnabled=true,hEnabled=true;
 function sToggle(){fetch('/setstrom?en='+(sEnabled?0:1)).then(()=>setTimeout(tick,200));}
 function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value).then(()=>{smsg.textContent='gespeichert';});}
 function hToggle(){fetch('/setheat?en='+(hEnabled?0:1)).then(()=>setTimeout(tick,200));}
+let mEnabled=false;
+function mToggle(){fetch('/setmqtt?en='+(mEnabled?0:1)).then(()=>setTimeout(tick,200));}
 function hSave(){fetch('/setheat?h='+hih.value+'&tx='+htx.value+'&rx='+hrx.value).then(()=>{hmsg.textContent='gespeichert';});}
 function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
  '&host='+encodeURIComponent(mhost.value)+
@@ -174,7 +177,8 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
  if(ae!==hih)hih.value=w.interval_h;
  if(ae!==htx)htx.value=w.tx;
  if(ae!==hrx)hrx.value=w.rx;
- pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ mEnabled=d.mqtt_en;men.textContent=d.mqtt_en?'AN':'AUS';men.className=d.mqtt_en?'':'alt';
+ if(!d.mqtt_en)pill(mqtt,false,'aus');else pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
  if(ae!==mroot)mroot.value=d.mqtt_root||'';
  if(ae!==mhost)mhost.value=d.mqtt_host||'';
  if(ae!==mport)mport.value=d.mqtt_port||1883;

@@ -20,7 +20,7 @@ void ensureWifi() {
 }
 
 void ensureMqtt() {
-  if (mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
+  if (!mqttEnabled || mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
 
   // Reconnect höchstens alle 5 s versuchen (sonst blockiert ein toter Broker die loop()).
   static unsigned long lastTry = 0;
@@ -43,10 +43,11 @@ void ensureMqtt() {
   if (ok) mqtt.publish(lwt.c_str(), "1", true);
 }
 
-// MQTT-Server/Port aus aktueller Konfig setzen und Verbindung neu aufbauen
+// MQTT-Konfig anwenden: immer trennen; bei aktivem MQTT Server setzen, dann
+// verbindet ensureMqtt() neu. Bei deaktiviertem MQTT bleibt es getrennt.
 void applyMqtt() {
   mqtt.disconnect();
-  mqtt.setServer(mqttServer.c_str(), mqttPort);   // ensureMqtt() verbindet neu
+  if (mqttEnabled) mqtt.setServer(mqttServer.c_str(), mqttPort);
 }
 
 // '.' und '*' -> '_'  =>  "6.26*01" -> "6_26_01"  (MQTT-tauglich)

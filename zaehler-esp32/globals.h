@@ -41,6 +41,7 @@ uint8_t  stromRxPin    = STROM_RX_DEF;
 uint16_t stromMqttS    = STROM_MQTT_DEF_S;   // MQTT-Sendeintervall Strom (Sekunden)
 int      reqIdx        = 0;                   // Index in HEAT_REQUESTS/HEAT_REQ_NAMES
 // MQTT-Broker-Konfiguration (aus NVS)
+bool     mqttEnabled = MQTT_ENABLED_DEF;       // MQTT global an/aus (Default aus)
 String   mqttServer = MQTT_SERVER_DEF;
 uint16_t mqttPort   = MQTT_PORT_DEF;
 String   mqttUser   = "";                     // leer = anonym
