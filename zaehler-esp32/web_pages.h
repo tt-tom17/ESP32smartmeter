@@ -80,27 +80,12 @@ const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <title>Strom</title><link rel=stylesheet href=/style.css></head><body>
 <nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>⚡ Stromzähler</h2>
- <div class=row><span>Auslesen</span><button id=en onclick=tEn()>–</button></div>
- <div class=row><span>Lesekopf-GPIO</span><select id=gpio></select></div>
- <div class=row><span>Sendeintervall (MQTT)</span><span><input type=number id=si min=2 max=300> s</span></div>
- <button onclick=save()>Speichern</button>
- <div class=s id=msg></div>
  <div class=row><span>Status</span><span id=ss class=pill>–</span></div></div>
 <div class=card><h2>Alle Werte</h2><table id=tbl></table>
  <div class=s style=margin-top:8px>Hauptwerte: Bezug <b id=bz>–</b> · Einspeisung <b id=es>–</b> · Leistung <b id=lw>–</b></div></div>
 <script>
-const INPINS=[16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
-let curEn=true;
-function opt(sel,a){sel.innerHTML='';for(const p of a){var o=document.createElement('option');o.value=p;o.textContent='GPIO'+p;sel.appendChild(o);}}
-opt(gpio,INPINS);
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
-function tEn(){fetch('/setstrom?en='+(curEn?0:1)).then(()=>setTimeout(tick,200));}
-function save(){fetch('/setstrom?rx='+gpio.value+'&s='+si.value).then(()=>{msg.textContent='gespeichert';});}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom;
- curEn=s.enabled;en.textContent=s.enabled?'AN':'AUS';en.className=s.enabled?'':'alt';
- const ae=document.activeElement;
- if(ae!==gpio)gpio.value=s.gpio;
- if(ae!==si)si.value=s.send_s;
  pill(ss,s.enabled&&s.status=='ok',s.enabled?s.status:'aus');
  let h='';for(const x of s.codes)h+='<tr><td>'+x.code+'</td><td><b>'+x.value+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
@@ -114,38 +99,19 @@ const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <title>Wärme</title><link rel=stylesheet href=/style.css></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme class=active>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>🔥 Wärmezähler</h2>
- <div class=row><span>Auslesen</span><button id=en onclick=tEn()>–</button></div>
- <div class=row><span>Leseintervall</span><span><input type=number id=ih min=1 max=24> h</span></div>
- <div class=row><span>TX-GPIO (&rarr; Lesekopf Rx)</span><select id=tx></select></div>
- <div class=row><span>RX-GPIO (&larr; Lesekopf Tx)</span><select id=rx></select></div>
- <button onclick=save()>Speichern</button><div class=s id=msg></div></div>
-<div class=card>
  <button class=alt onclick="cmd('/read')">Jetzt lesen</button>
- <button class=alt onclick="cmd('/toggle')">Anfrage /?! &harr; /#!</button>
  <div class=row><span>nächste Lesung</span><b id=next>–</b></div></div>
-<div class=card><h2>Alle Werte</h2><table id=tbl></table></div>
 <div class="card s">
  <div class=row><span>Status</span><b id=st>–</b></div>
  <div class=row><span>Identifikation</span><b id=ident>–</b></div>
  <div class=row><span>Anfrage</span><b id=req>–</b></div>
  <div class=row><span>Lesungen ok/total</span><b id=cnt>–</b></div>
  <div class=row><span>letztes Telegramm</span><b id=len>–</b></div></div>
+<div class=card><h2>Alle Werte</h2><table id=tbl></table></div>
 <script>
-const INPINS=[16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
-const OUTPINS=[16,17,18,19,21,22,23,25,26,27,32,33];
-let curEn=true;
-function opt(sel,a){sel.innerHTML='';for(const p of a){var o=document.createElement('option');o.value=p;o.textContent='GPIO'+p;sel.appendChild(o);}}
-opt(tx,OUTPINS);opt(rx,INPINS);
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
-function tEn(){fetch('/setheat?en='+(curEn?0:1)).then(()=>setTimeout(tick,200));}
-function save(){fetch('/setheat?h='+ih.value+'&tx='+tx.value+'&rx='+rx.value).then(()=>{msg.textContent='gespeichert';});}
 function cmd(u){fetch(u).then(()=>setTimeout(tick,500));}
 async function tick(){try{const d=await(await fetch('/api')).json();const w=d.heat;
- curEn=w.enabled;en.textContent=w.enabled?'AN':'AUS';en.className=w.enabled?'':'alt';
- const ae=document.activeElement;
- if(ae!==ih)ih.value=w.interval_h;
- if(ae!==tx)tx.value=w.tx;
- if(ae!==rx)rx.value=w.rx;
  next.textContent=w.enabled?fmtNext(w.next_read_s):'aus';
  let h='';for(const x of w.codes)h+='<tr><td>'+x.code+'</td><td><b>'+(x.raw||x.value)+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
@@ -159,6 +125,17 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Einstellungen</title><link rel=stylesheet href=/style.css></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update class=active>Einstellungen</a></nav>
+<div class=card><h2>⚡ Strom</h2>
+ <div class=row><span>Auslesen</span><button id=sen onclick=sToggle()>–</button></div>
+ <div class=row><span>Lesekopf-GPIO</span><select id=sgpio></select></div>
+ <div class=row><span>Sendeintervall (MQTT)</span><span><input type=number id=ssi min=2 max=300> s</span></div>
+ <button onclick=sSave()>Speichern</button><div class=s id=smsg></div></div>
+<div class=card><h2>🔥 Wärme</h2>
+ <div class=row><span>Auslesen</span><button id=hen onclick=hToggle()>–</button></div>
+ <div class=row><span>Leseintervall</span><span><input type=number id=hih min=1 max=24> h</span></div>
+ <div class=row><span>TX-GPIO (&rarr; Lesekopf Rx)</span><select id=htx></select></div>
+ <div class=row><span>RX-GPIO (&larr; Lesekopf Tx)</span><select id=hrx></select></div>
+ <button onclick=hSave()>Speichern</button><div class=s id=hmsg></div></div>
 <div class=card><h2>MQTT (ioBroker)</h2>
  <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Host/IP</span><input id=mhost></div>
@@ -171,14 +148,29 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <input type=file id=file accept='.bin'><br><button onclick='go()'>Flashen</button>
 <pre id=p style='font-size:1.3rem'></pre></div>
 <script>
+const INPINS=[16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
+const OUTPINS=[16,17,18,19,21,22,23,25,26,27,32,33];
+function opt(sel,a){sel.innerHTML='';for(const p of a){var o=document.createElement('option');o.value=p;o.textContent='GPIO'+p;sel.appendChild(o);}}
+opt(sgpio,INPINS);opt(htx,OUTPINS);opt(hrx,INPINS);
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
+let sEnabled=true,hEnabled=true;
+function sToggle(){fetch('/setstrom?en='+(sEnabled?0:1)).then(()=>setTimeout(tick,200));}
+function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value).then(()=>{smsg.textContent='gespeichert';});}
+function hToggle(){fetch('/setheat?en='+(hEnabled?0:1)).then(()=>setTimeout(tick,200));}
+function hSave(){fetch('/setheat?h='+hih.value+'&tx='+htx.value+'&rx='+hrx.value).then(()=>{hmsg.textContent='gespeichert';});}
 function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
  '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
  '&pw='+encodeURIComponent(mpw.value);
  fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
-async function tick(){try{const d=await(await fetch('/api')).json();
+async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;const ae=document.activeElement;
+ sEnabled=s.enabled;sen.textContent=s.enabled?'AN':'AUS';sen.className=s.enabled?'':'alt';
+ if(ae!==sgpio)sgpio.value=s.gpio;
+ if(ae!==ssi)ssi.value=s.send_s;
+ hEnabled=w.enabled;hen.textContent=w.enabled?'AN':'AUS';hen.className=w.enabled?'':'alt';
+ if(ae!==hih)hih.value=w.interval_h;
+ if(ae!==htx)htx.value=w.tx;
+ if(ae!==hrx)hrx.value=w.rx;
  pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
- var ae=document.activeElement;
  if(ae!==mhost)mhost.value=d.mqtt_host||'';
  if(ae!==mport)mport.value=d.mqtt_port||1883;
  if(ae!==muser)muser.value=d.mqtt_user||'';

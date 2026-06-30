@@ -56,7 +56,7 @@ const char* HOSTNAME       = "esp32-zaehler";       // OTA + Hostname
 // FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
 // (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
 // ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
-#define FW_VERSION  1
+#define FW_VERSION  2
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // Wärmezähler (UART1) — Default-Pins (Web-änderbar)
