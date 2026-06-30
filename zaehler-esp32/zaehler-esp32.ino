@@ -156,6 +156,19 @@ void ensureWifi() {
 
 void ensureMqtt() {
   if (mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
+
+  // Reconnect höchstens alle 5 s versuchen (sonst blockiert ein toter Broker die loop()).
+  static unsigned long lastTry = 0;
+  unsigned long now = millis();
+  if (lastTry != 0 && now - lastTry < 5000) return;
+  lastTry = now;
+
+  // Broker zuerst mit KURZEM Timeout anpingen. Ohne das würde PubSubClient.connect()
+  // bei nicht erreichbarem Host ~30 s blockieren -> Task-Watchdog-Reset / Reboot-Loop.
+  WiFiClient probe;
+  if (!probe.connect(mqttServer.c_str(), mqttPort, 1500)) { probe.stop(); return; }
+  probe.stop();
+
   String lwt = String(MQTT_HEAT_PREFIX) + "online";
   bool ok;
   if (mqttUser.length())
