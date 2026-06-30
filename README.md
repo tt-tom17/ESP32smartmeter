@@ -58,10 +58,26 @@ Der UH50 wird nach IEC-Standard ausgelesen (verifiziert am echten Zähler):
 
 Wichtigster Wert: **`6.8` = Wärmemenge in MWh** (→ DB `waermedaten`).
 
-## Arduino-IDE
+## Bauen — Arduino-IDE
 - Board: **ESP32 Dev Module**
 - Library: **PubSubClient** (Nick O'Leary) installieren
 - Rest (WiFi, WebServer, ArduinoOTA, Update, Preferences) kommt mit dem ESP32-Core.
+
+## Bauen — PlatformIO (VSCode)
+Funktioniert aus demselben Repo — `platformio.ini` zeigt per `src_dir` auf den
+Sketch-Ordner, du musst nichts nach `src/` kopieren.
+1. `secrets.h` anlegen (siehe oben) — sie liegt in `zaehler-esp32/`.
+2. PlatformIO-Projekt öffnen (Ordner `esp32-zaehler-reader/`).
+3. Bauen/Flashen über die PlatformIO-Toolbar oder:
+   ```bash
+   pio run                 # kompilieren
+   pio run -t upload       # per USB flashen
+   pio device monitor      # serieller Monitor @115200
+   ```
+PubSubClient wird automatisch aus `lib_deps` geholt. Für die **pioarduino**-Variante
+(neuere ESP32-Cores) in `platformio.ini` die `platform`-Zeile auf die pioarduino-URL
+umstellen (Kommentar dort beachtet). OTA-Upload: `upload_protocol`/`upload_port`
+in `platformio.ini` aktivieren.
 
 ## Inbetriebnahme
 1. `secrets.h` anlegen (siehe oben), `zaehler-esp32/zaehler-esp32.ino` in der
