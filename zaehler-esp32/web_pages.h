@@ -36,7 +36,7 @@ a.btnlink{display:block;text-align:center;background:#334155;color:#fff;text-dec
 
 const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Zähler</title><link rel=stylesheet href=/style.css></head><body>
+<title>Zähler</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>Verbindung</h2>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
@@ -77,7 +77,7 @@ tick();setInterval(tick,3000);
 
 const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Strom</title><link rel=stylesheet href=/style.css></head><body>
+<title>Strom</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>⚡ Stromzähler</h2>
  <div class=row><span>Status</span><span id=ss class=pill>–</span></div></div>
@@ -96,7 +96,7 @@ tick();setInterval(tick,3000);
 
 const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Wärme</title><link rel=stylesheet href=/style.css></head><body>
+<title>Wärme</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme class=active>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>🔥 Wärmezähler</h2>
  <button class=alt onclick="cmd('/read')">Jetzt lesen</button>
@@ -123,7 +123,7 @@ tick();setInterval(tick,3000);
 
 const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Einstellungen</title><link rel=stylesheet href=/style.css></head><body>
+<title>Einstellungen</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update class=active>Einstellungen</a></nav>
 <div class=card><h2>⚡ Strom</h2>
  <div class=row><span>Auslesen</span><button id=sen onclick=sToggle()>–</button></div>
@@ -147,6 +147,7 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <p class=s>Arduino-IDE: <b>Sketch &rarr; Kompilierte Binärdatei exportieren</b>, dann die <code>.ino.bin</code> hier wählen. (PlatformIO: <code>firmware.bin</code>)</p>
 <input type=file id=file accept='.bin'><br><button onclick='go()'>Flashen</button>
 <pre id=p style='font-size:1.3rem'></pre></div>
+<div class=foot>Firmware v<span id=fwv>–</span> · Build <span id=fwb>–</span></div>
 <script>
 const INPINS=[16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
 const OUTPINS=[16,17,18,19,21,22,23,25,26,27,32,33];
@@ -163,6 +164,7 @@ function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
  '&pw='+encodeURIComponent(mpw.value);
  fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;const ae=document.activeElement;
+ if(d.fw_ver!=null)fwv.textContent=d.fw_ver;if(d.fw_build)fwb.textContent=d.fw_build;
  sEnabled=s.enabled;sen.textContent=s.enabled?'AN':'AUS';sen.className=s.enabled?'':'alt';
  if(ae!==sgpio)sgpio.value=s.gpio;
  if(ae!==ssi)ssi.value=s.send_s;

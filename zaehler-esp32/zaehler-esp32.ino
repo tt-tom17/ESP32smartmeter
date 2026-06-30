@@ -56,7 +56,7 @@ const char* HOSTNAME       = "esp32-zaehler";       // OTA + Hostname
 // FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
 // (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
 // ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
-#define FW_VERSION  2
+#define FW_VERSION  3
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // Wärmezähler (UART1) — Default-Pins (Web-änderbar)
@@ -727,7 +727,7 @@ void setup() {
   web.on("/",          [](){ web.send_P(200, "text/html", MAIN_PAGE); });
   web.on("/strom",     [](){ web.send_P(200, "text/html", STROM_PAGE); });
   web.on("/waerme",    [](){ web.send_P(200, "text/html", WAERME_PAGE); });
-  web.on("/style.css", [](){ web.send_P(200, "text/css",  CSS); });
+  web.on("/style.css", [](){ web.sendHeader("Cache-Control", "max-age=86400"); web.send_P(200, "text/css", CSS); });
   web.on("/api",       handleApi);
   web.on("/setheat",   handleSetHeat);
   web.on("/setstrom",  handleSetStrom);
