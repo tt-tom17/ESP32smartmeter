@@ -28,7 +28,8 @@
  */
 
 #include <WiFi.h>
-#include <WebServer.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 #include <Update.h>
@@ -56,7 +57,7 @@ const char* HOSTNAME       = "esp32-zaehler";       // OTA + Hostname
 // FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
 // (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
 // ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
-#define FW_VERSION  3
+#define FW_VERSION  4
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // Wärmezähler (UART1) — Default-Pins (Web-änderbar)
@@ -95,9 +96,23 @@ const unsigned long STROM_STALE_MS = 30000;  // ohne Telegramm -> "stale"
 
 HardwareSerial Heat(1);   // UART1
 HardwareSerial Sml(2);    // UART2
-WebServer      web(80);
+AsyncWebServer server(80);
 WiFiClient     wifiClient;
 PubSubClient   mqtt(wifiClient);
+
+// Async-Handler laufen in einem EIGENEN Task. PubSubClient (MQTT) und die UARTs sind
+// NICHT thread-safe -> Web-Handler setzen nur Werte/Flags, die heiklen Seiteneffekte
+// führt loop() aus (mqtt.publish, applyStrom/applyMqtt, readHeat, Neustart nach OTA).
+volatile bool reqRead          = false;   // /read  -> Wärme jetzt lesen
+volatile bool applyStromPending = false;  // Strom-UART neu initialisieren
+volatile bool applyMqttPending  = false;  // MQTT neu verbinden
+volatile bool pubHeatCfg        = false;  // interval_h per MQTT publizieren
+volatile bool pubStromCfg       = false;  // send_s per MQTT publizieren
+unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
+
+// kleine Helfer für GET-Query-Argumente eines Async-Requests
+static bool   reqHas(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n); }
+static String reqArg(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n) ? r->getParam(n)->value() : String(); }
 Preferences    prefs;
 
 char telegram[TELEGRAM_BUF];
@@ -531,7 +546,7 @@ String jsonEscape(const String& s) {
   String o; for (char c : s) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o;
 }
 
-void handleApi() {
+void handleApi(AsyncWebServerRequest* req) {
   unsigned long nextS = 0;
   if (heatEnabled && lastHeat != 0) {
     unsigned long el = millis() - lastHeat;
@@ -589,93 +604,96 @@ void handleApi() {
     j += "\"raw\":\"" + jsonEscape(heatRaw[i]) + "\"}";
   }
   j += "]}}";
-  web.send(200, "application/json", j);
+  req->send(200, "application/json", j);
 }
 
 bool validGpio(int g) { return g >= 0 && g <= 39; }
 
-void handleSetHeat() {
-  if (web.hasArg("en")) {
-    heatEnabled = web.arg("en").toInt() != 0;
+void handleSetHeat(AsyncWebServerRequest* req) {
+  if (reqHas(req, "en")) {
+    heatEnabled = reqArg(req, "en").toInt() != 0;
     prefs.putUChar("heat_en", heatEnabled ? 1 : 0);
   }
-  if (web.hasArg("h")) {
-    int h = web.arg("h").toInt();
+  if (reqHas(req, "h")) {
+    int h = reqArg(req, "h").toInt();
     if (h < HEAT_INTERVAL_MIN_H) h = HEAT_INTERVAL_MIN_H;
     if (h > HEAT_INTERVAL_MAX_H) h = HEAT_INTERVAL_MAX_H;
     heatIntervalH = (uint8_t)h;
     prefs.putUChar("heat_h", heatIntervalH);
-    mqtt.publish((String(MQTT_HEAT_PREFIX) + "interval_h").c_str(), String(heatIntervalH).c_str(), true);
+    pubHeatCfg = true;                          // MQTT-Publish in loop() (thread-safe)
   }
-  if (web.hasArg("tx")) { int g = web.arg("tx").toInt(); if (validGpio(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
-  if (web.hasArg("rx")) { int g = web.arg("rx").toInt(); if (validGpio(g)) { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
+  if (reqHas(req, "tx")) { int g = reqArg(req, "tx").toInt(); if (validGpio(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
+  if (reqHas(req, "rx")) { int g = reqArg(req, "rx").toInt(); if (validGpio(g)) { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
   Serial.printf("[CFG] Wärme: %s, %u h, TX=GPIO%u RX=GPIO%u\n",
                 heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin);
-  web.send(200, "text/plain", "ok");
+  req->send(200, "text/plain", "ok");
 }
 
-void handleSetStrom() {
+void handleSetStrom(AsyncWebServerRequest* req) {
   bool changed = false;
-  if (web.hasArg("en")) {
-    stromEnabled = web.arg("en").toInt() != 0;
+  if (reqHas(req, "en")) {
+    stromEnabled = reqArg(req, "en").toInt() != 0;
     prefs.putUChar("strom_en", stromEnabled ? 1 : 0);
     changed = true;
   }
-  if (web.hasArg("rx")) {
-    int g = web.arg("rx").toInt();
+  if (reqHas(req, "rx")) {
+    int g = reqArg(req, "rx").toInt();
     if (validGpio(g)) { stromRxPin = g; prefs.putUChar("strom_rx", g); changed = true; }
   }
-  if (web.hasArg("s")) {                       // MQTT-Sendeintervall (s)
-    int s = web.arg("s").toInt();
+  if (reqHas(req, "s")) {                       // MQTT-Sendeintervall (s)
+    int s = reqArg(req, "s").toInt();
     if (s < STROM_MQTT_MIN_S) s = STROM_MQTT_MIN_S;
     if (s > STROM_MQTT_MAX_S) s = STROM_MQTT_MAX_S;
     stromMqttS = (uint16_t)s;
     prefs.putUShort("strom_s", stromMqttS);
-    mqtt.publish((String(MQTT_STROM_PREFIX) + "send_s").c_str(), String(stromMqttS).c_str(), true);
+    pubStromCfg = true;                          // MQTT-Publish in loop() (thread-safe)
   }
-  if (changed) applyStrom();
-  web.send(200, "text/plain", "ok");
+  if (changed) applyStromPending = true;         // UART-Re-Init in loop() (thread-safe)
+  req->send(200, "text/plain", "ok");
 }
 
 // MQTT-Broker konfigurieren: host, port, user, pw (alle optional). Leeres pw-Feld
 // lässt das Passwort UNVERÄNDERT (sonst würde jedes Speichern es löschen).
-void handleSetMqtt() {
-  if (web.hasArg("host")) { mqttServer = web.arg("host"); prefs.putString("mqtt_host", mqttServer); }
-  if (web.hasArg("port")) {
-    int p = web.arg("port").toInt();
+void handleSetMqtt(AsyncWebServerRequest* req) {
+  if (reqHas(req, "host")) { mqttServer = reqArg(req, "host"); prefs.putString("mqtt_host", mqttServer); }
+  if (reqHas(req, "port")) {
+    int p = reqArg(req, "port").toInt();
     if (p > 0 && p <= 65535) { mqttPort = (uint16_t)p; prefs.putUShort("mqtt_port", mqttPort); }
   }
-  if (web.hasArg("user")) { mqttUser = web.arg("user"); prefs.putString("mqtt_user", mqttUser); }
-  if (web.hasArg("pw")) {
-    String pw = web.arg("pw");
+  if (reqHas(req, "user")) { mqttUser = reqArg(req, "user"); prefs.putString("mqtt_user", mqttUser); }
+  if (reqHas(req, "pw")) {
+    String pw = reqArg(req, "pw");
     if (pw.length()) { mqttPass = pw; prefs.putString("mqtt_pass", mqttPass); }
   }
   Serial.printf("[CFG] MQTT %s:%u user=%s\n",
                 mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
-  applyMqtt();
-  web.send(200, "text/plain", "ok");
+  applyMqttPending = true;                        // Reconnect in loop() (thread-safe)
+  req->send(200, "text/plain", "ok");
 }
 
 void setupWebOta() {
-  web.on("/update", HTTP_GET, []() {
-    web.send_P(200, "text/html", UPDATE_PAGE);
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest* req) {
+    req->send_P(200, "text/html", UPDATE_PAGE);
   });
-  web.on("/update", HTTP_POST,
-    []() {
-      web.send(200, "text/plain", Update.hasError() ? "FEHLER beim Flashen" : "OK - Neustart...");
-      delay(500);
-      ESP.restart();
+  server.on("/update", HTTP_POST,
+    [](AsyncWebServerRequest* req) {                    // läuft nach Upload-Ende
+      bool err = Update.hasError();
+      AsyncWebServerResponse* resp = req->beginResponse(200, "text/plain",
+                                       err ? "FEHLER beim Flashen" : "OK - Neustart...");
+      resp->addHeader("Connection", "close");
+      req->send(resp);
+      if (!err) restartAt = millis() + 800;            // Neustart aus loop() heraus
     },
-    []() {
-      HTTPUpload& up = web.upload();
-      if (up.status == UPLOAD_FILE_START) {
+    [](AsyncWebServerRequest* req, String filename, size_t index,
+       uint8_t* data, size_t len, bool final) {        // Upload-Chunks
+      if (index == 0) {
         otaActive = true;
-        Serial.printf("[WebOTA] Start: %s\n", up.filename.c_str());
+        Serial.printf("[WebOTA] Start: %s\n", filename.c_str());
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
-      } else if (up.status == UPLOAD_FILE_WRITE) {
-        if (Update.write(up.buf, up.currentSize) != up.currentSize) Update.printError(Serial);
-      } else if (up.status == UPLOAD_FILE_END) {
-        if (Update.end(true)) Serial.printf("[WebOTA] OK: %u Bytes\n", up.totalSize);
+      }
+      if (len && Update.write(data, len) != len) Update.printError(Serial);
+      if (final) {
+        if (Update.end(true)) Serial.printf("[WebOTA] OK: %u Bytes\n", index + len);
         else Update.printError(Serial);
       }
     }
@@ -724,29 +742,40 @@ void setup() {
   ArduinoOTA.onError([](ota_error_t e) { otaActive = false; });
   ArduinoOTA.begin();
 
-  web.on("/",          [](){ web.send_P(200, "text/html", MAIN_PAGE); });
-  web.on("/strom",     [](){ web.send_P(200, "text/html", STROM_PAGE); });
-  web.on("/waerme",    [](){ web.send_P(200, "text/html", WAERME_PAGE); });
-  web.on("/style.css", [](){ web.sendHeader("Cache-Control", "max-age=86400"); web.send_P(200, "text/css", CSS); });
-  web.on("/api",       handleApi);
-  web.on("/setheat",   handleSetHeat);
-  web.on("/setstrom",  handleSetStrom);
-  web.on("/setmqtt",   handleSetMqtt);
-  web.on("/read",      [](){ readHeat(); lastHeat = millis(); web.send(200, "text/plain", "ok"); });
-  web.on("/toggle",    [](){ reqIdx = 1 - reqIdx; web.send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });
+  server.on("/",          HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", MAIN_PAGE); });
+  server.on("/strom",     HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", STROM_PAGE); });
+  server.on("/waerme",    HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", WAERME_PAGE); });
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* r){
+    AsyncWebServerResponse* resp = r->beginResponse_P(200, "text/css", CSS);
+    resp->addHeader("Cache-Control", "max-age=86400");
+    r->send(resp);
+  });
+  server.on("/api",       HTTP_GET, handleApi);
+  server.on("/setheat",   HTTP_GET, handleSetHeat);
+  server.on("/setstrom",  HTTP_GET, handleSetStrom);
+  server.on("/setmqtt",   HTTP_GET, handleSetMqtt);
+  server.on("/read",      HTTP_GET, [](AsyncWebServerRequest* r){ reqRead = true; r->send(200, "text/plain", "ok"); });
+  server.on("/toggle",    HTTP_GET, [](AsyncWebServerRequest* r){ reqIdx = 1 - reqIdx; r->send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });
   setupWebOta();
-  web.begin();
+  server.begin();
 
   Serial.println("Setup fertig.");
 }
 
 void loop() {
+  if (restartAt && millis() >= restartAt) { restartAt = 0; ESP.restart(); }
   ArduinoOTA.handle();
   if (otaActive) return;
   ensureWifi();
   ensureMqtt();
   mqtt.loop();
-  web.handleClient();
+
+  // Vom Async-Webserver angeforderte, NICHT thread-safe Aktionen hier ausführen:
+  if (applyStromPending) { applyStromPending = false; applyStrom(); }
+  if (applyMqttPending)  { applyMqttPending  = false; applyMqtt(); }
+  if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((String(MQTT_HEAT_PREFIX)  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); }
+  if (pubStromCfg) { pubStromCfg = false; mqtt.publish((String(MQTT_STROM_PREFIX) + "send_s").c_str(),     String(stromMqttS).c_str(),    true); }
+  if (reqRead)     { reqRead     = false; readHeat(); lastHeat = millis(); }
 
   if (stromEnabled) smlPoll();
 
