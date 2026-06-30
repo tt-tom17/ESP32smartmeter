@@ -91,7 +91,9 @@ in `platformio.ini` aktivieren.
 Oben auf jeder Seite eine Navigationsleiste: **Start · Strom · Wärme · Update**.
 
 - **Start (`/`)** — Übersicht: aktuelle Strom- (W, Bezug, Einspeisung) und
-  Wärmewerte (6.8 MWh), WLAN-RSSI, **MQTT-Verbindungsstatus**, Uptime.
+  Wärmewerte (6.8 MWh), WLAN-RSSI, Uptime sowie **MQTT-Karte**: Verbindungsstatus
+  + Felder für **Host/IP, Port, User, Passwort** (speichern → verbindet neu;
+  leeres Passwortfeld lässt das gespeicherte PW unverändert).
 - **Strom (`/strom`)** — **alle** ausgelesenen OBIS-Werte (generischer SML-Scan),
   Schalter **Auslesen AN/AUS**, **Lesekopf-GPIO** und **MQTT-Sendeintervall
   (2–300 s)** auswählen + speichern. Das Sendeintervall ist das Pendant zu
@@ -107,7 +109,9 @@ Namespace `zaehler`)** und überstehen einen Reboot.
 
 Steuer-Endpunkte (auch per `curl`): `GET /api` (JSON),
 `GET /setheat?en=0|1&h=N&tx=G&rx=G`, `GET /setstrom?en=0|1&rx=G&s=Sek`,
-`GET /read`, `GET /toggle`.
+`GET /setmqtt?host=...&port=1883&user=...&pw=...`, `GET /read`, `GET /toggle`.
+Hinweis: `/api` liefert `mqtt_host/port/user` + `mqtt_haspw`, das **Passwort
+selbst wird nie ausgeliefert**.
 
 ## Firmware-Update (Web-OTA)
 `http://<IP>/update` → in der Arduino-IDE **Sketch → Kompilierte Binärdatei
