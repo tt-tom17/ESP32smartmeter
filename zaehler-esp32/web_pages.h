@@ -138,6 +138,7 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <button onclick=hSave()>Speichern</button><div class=s id=hmsg></div></div>
 <div class=card><h2>MQTT (ioBroker)</h2>
  <div class=row><span>Status</span><span id=mqtt class=pill>–</span></div>
+ <div class=row><span>Haupttopic</span><input id=mroot placeholder=ESP32smartmeter></div>
  <div class=row><span>Host/IP</span><input id=mhost></div>
  <div class=row><span>Port</span><input type=number id=mport min=1 max=65535></div>
  <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
@@ -159,7 +160,8 @@ function sToggle(){fetch('/setstrom?en='+(sEnabled?0:1)).then(()=>setTimeout(tic
 function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value).then(()=>{smsg.textContent='gespeichert';});}
 function hToggle(){fetch('/setheat?en='+(hEnabled?0:1)).then(()=>setTimeout(tick,200));}
 function hSave(){fetch('/setheat?h='+hih.value+'&tx='+htx.value+'&rx='+hrx.value).then(()=>{hmsg.textContent='gespeichert';});}
-function saveMqtt(){var q='/setmqtt?host='+encodeURIComponent(mhost.value)+
+function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
+ '&host='+encodeURIComponent(mhost.value)+
  '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
  '&pw='+encodeURIComponent(mpw.value);
  fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
@@ -173,6 +175,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
  if(ae!==htx)htx.value=w.tx;
  if(ae!==hrx)hrx.value=w.rx;
  pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ if(ae!==mroot)mroot.value=d.mqtt_root||'';
  if(ae!==mhost)mhost.value=d.mqtt_host||'';
  if(ae!==mport)mport.value=d.mqtt_port||1883;
  if(ae!==muser)muser.value=d.mqtt_user||'';
