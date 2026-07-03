@@ -24,3 +24,7 @@ Thumbs.db
 # Claude-spezifische Dateien/Ordner — nur lokal, nie ins Repo committen
 CLAUDE.md
 .claude/
+
+# Lokale Skripte/Werkzeuge — nur lokal
+scripts/
+dist/
