@@ -22,11 +22,24 @@ static const char* MQTT_CLIENT_ID = "esp32-zaehler";
 
 static const char* HOSTNAME = "esp32-zaehler";             // OTA + Hostname
 
+// ─── WLAN-Provisioning (SoftAP + Captive Portal) ──────────────────────────────
+// Beim Erststart (keine WLAN-Daten im NVS) oder wenn die erste Verbindung nach
+// dem Boot scheitert, öffnet der ESP ein OFFENES Setup-WLAN. Der User verbindet
+// sich, trägt im Portal (192.168.4.1) SSID+Passwort ein -> NVS -> Reboot -> STA.
+#define AP_SSID  "Zaehler-Setup"                            // offener Provisioning-AP
+static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000; // STA-Connect-Timeout
+// Sind bereits WLAN-Daten gespeichert (Gerät lief schon), aber die Verbindung
+// scheitert beim Boot (z.B. Router nach Stromausfall noch nicht oben): Portal nur
+// vorübergehend öffnen, dann rebooten und STA neu versuchen -> selbstheilend.
+// Ein FRISCHES Gerät (keine Creds) lässt das Portal dauerhaft offen.
+static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
+
 // ─── Firmware-Version ─────────────────────────────────────────────────────────
-// FW_VERSION bei jedem neuen Build hochzählen. Der Build-Zeitstempel
-// (__DATE__/__TIME__) aktualisiert sich automatisch beim Kompilieren und zeigt,
-// ob ein Flash/OTA wirklich angekommen ist. Beides wird auf der Startseite gezeigt.
-#define FW_VERSION  7
+// FW_VERSION als SemVer-String "MAJOR.MINOR.PATCH" bei jedem neuen Build erhöhen.
+// Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
+// Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
+// auf der Startseite gezeigt.
+#define FW_VERSION  "1.0.1"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Wärmezähler (UART1) — Default-Pins (Web-änderbar) ────────────────────────

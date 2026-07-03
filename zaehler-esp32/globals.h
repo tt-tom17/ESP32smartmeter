@@ -13,6 +13,14 @@ AsyncWebServer server(80);
 WiFiClient     wifiClient;
 PubSubClient   mqtt(wifiClient);
 Preferences    prefs;
+DNSServer      dnsServer;  // Captive-Portal-DNS (nur im Provisioning-AP aktiv)
+
+// ─── WLAN-Provisioning-Zustand ────────────────────────────────────────────────
+const IPAddress apIP(192, 168, 4, 1);     // feste SoftAP-IP (Detection-Redirects!)
+bool     apMode      = false;              // true = Setup-Portal aktiv, Zähler ruhen
+unsigned long apStartedAt = 0;             // millis() beim Portal-Start (Timeout)
+String   wifiSsid = "";                    // aus NVS geladene WLAN-Zugangsdaten
+String   wifiPass = "";
 
 // ─── Thread-Safety: Web-Handler -> loop() ─────────────────────────────────────
 // Async-Handler laufen in einem EIGENEN Task. PubSubClient (MQTT) und die UARTs sind
@@ -23,6 +31,10 @@ volatile bool applyStromPending = false;  // Strom-UART neu initialisieren
 volatile bool applyMqttPending  = false;  // MQTT neu verbinden
 volatile bool pubHeatCfg        = false;  // interval_h per MQTT publizieren
 volatile bool pubStromCfg       = false;  // send_s per MQTT publizieren
+volatile bool credSaveReq       = false;  // neue WLAN-Daten gesetzt -> speichern + reboot
+volatile bool wifiResetReq      = false;  // "WLAN vergessen" -> Creds löschen + reboot
+volatile bool scanReq           = false;  // WLAN-Scan im Portal starten
+String        pendingSsid, pendingPass;   // vom Web-Handler befüllt, loop() speichert
 unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
 
 // kleine Helfer für GET-Query-Argumente eines Async-Requests

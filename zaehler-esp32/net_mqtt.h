@@ -5,17 +5,55 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+// ─── WLAN-Zugangsdaten im NVS (Namespace "zaehler", prefs ist in setup() offen) ─
+void loadWifiCreds()  { wifiSsid = prefs.getString("wifi_ssid", "");
+                        wifiPass = prefs.getString("wifi_pass", ""); }
+void saveWifiCreds(const String& s, const String& p) { prefs.putString("wifi_ssid", s);
+                                                       prefs.putString("wifi_pass", p); }
+void clearWifiCreds() { prefs.remove("wifi_ssid"); prefs.remove("wifi_pass"); }
+
+// Setup-Portal öffnen: offener SoftAP + Captive-DNS. WIFI_AP_STA, damit im Portal
+// ein WLAN-Scan (STA-Interface) möglich ist; es wird KEIN WiFi.begin() aufgerufen.
+// Nur aus setup()/loop() aufrufen — nie aus einem Web-Handler (Thread-Safety).
+void startProvisioningAP() {
+  if (apMode) return;
+  apMode = true;
+  apStartedAt = millis();
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAP(AP_SSID);                       // offen (kein Passwort)
+  dnsServer.setTTL(3600);
+  dnsServer.start(53, "*", apIP);             // Wildcard -> alles auf 192.168.4.1
+  Serial.printf("[AP] Setup-Portal '%s' offen @ %s\n",
+                AP_SSID, WiFi.softAPIP().toString().c_str());
+}
+
+// WLAN-Zustandsautomat:
+//   apMode          -> nur den Captive-DNS bedienen
+//   verbunden       -> fertig
+//   keine Creds     -> Setup-Portal öffnen
+//   Connect scheitert BEIM ERSTEN MAL -> Setup-Portal (Fallback)
+//   Connect scheitert SPÄTER (WLAN-Blip) -> nur weiter versuchen, kein Portal
 void ensureWifi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+  if (apMode) { dnsServer.processNextRequest(); return; }
+  static bool everConnected = false;
+  if (WiFi.status() == WL_CONNECTED) { everConnected = true; return; }
+
+  if (wifiSsid.isEmpty()) { startProvisioningAP(); return; }
+
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
   WiFi.setSleep(false);            // WiFi-Stromsparen aus -> OTA/UDP zuverlässig
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
   unsigned long t = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) delay(250);
+  while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) delay(250);
   if (WiFi.status() == WL_CONNECTED) {
+    everConnected = true;
     Serial.print("WLAN ok, MAC: "); Serial.print(WiFi.macAddress());
     Serial.print(", IP: ");         Serial.println(WiFi.localIP());
+  } else if (!everConnected) {
+    Serial.println("[WiFi] Erstverbindung fehlgeschlagen -> Setup-Portal");
+    startProvisioningAP();          // nur beim ersten Boot ins Portal fallen
   }
 }
 

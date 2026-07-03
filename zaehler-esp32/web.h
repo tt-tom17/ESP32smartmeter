@@ -21,6 +21,7 @@ void handleApi(AsyncWebServerRequest* req) {
   String j = "{";
   j += "\"uptime_s\":" + String(millis() / 1000);
   j += ",\"rssi\":" + String(WiFi.RSSI());
+  j += ",\"wifi_ssid\":\"" + jsonEscape(wifiSsid) + "\"";
   j += ",\"mqtt\":" + String(mqtt.connected() ? "true" : "false");
   j += ",\"mqtt_en\":" + String(mqttEnabled ? "true" : "false");
   j += ",\"mqtt_root\":\"" + jsonEscape(mqttRoot) + "\"";
@@ -28,7 +29,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"mqtt_port\":" + String(mqttPort);
   j += ",\"mqtt_user\":\"" + jsonEscape(mqttUser) + "\"";
   j += ",\"mqtt_haspw\":" + String(mqttPass.length() ? "true" : "false");
-  j += ",\"fw_ver\":" + String(FW_VERSION);
+  j += ",\"fw_ver\":\"" + jsonEscape(FW_VERSION) + "\"";
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
 
   // Strom
@@ -178,9 +179,56 @@ void setupWebOta() {
   );
 }
 
+// ─── WLAN-Provisioning: Scan, Speichern, Reset, Captive-Portal ────────────────
+// Scan wird über ein Flag in loop() gestartet (WiFi-Zugriff gehört nicht in den
+// Web-Task); /scan.json pollt nur das Ergebnis und gibt den Scan-Puffer frei.
+void handleScanJson(AsyncWebServerRequest* req) {
+  int16_t n = WiFi.scanComplete();                 // >=0 fertig, -1 läuft, -2 idle
+  if (n < 0) { req->send(200, "application/json", "{\"scanning\":true,\"nets\":[]}"); return; }
+  String out = "{\"scanning\":false,\"nets\":[";
+  for (int i = 0; i < n; i++) {
+    if (i) out += ',';
+    out += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",\"rssi\":" + String(WiFi.RSSI(i))
+         + ",\"enc\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "0" : "1") + "}";
+  }
+  out += "]}";
+  WiFi.scanDelete();                               // Scan-Puffer freigeben (RAM)
+  req->send(200, "application/json", out);
+}
+
+// Im apMode jede unbekannte / OS-Detection-URL auf die Portalseite lenken.
+static void captiveTo(AsyncWebServerRequest* r) {
+  if (apMode) r->redirect("http://192.168.4.1/");
+  else        r->send(404, "text/plain", "404");
+}
+
+void setupProvisioning() {
+  // Neue WLAN-Daten: nur Werte + Flag setzen, speichern/rebooten macht loop().
+  server.on("/wifisave", HTTP_GET, [](AsyncWebServerRequest* r){
+    pendingSsid = reqArg(r, "ssid");
+    pendingPass = reqArg(r, "pass");
+    credSaveReq = true;
+    r->send(200, "text/plain", "ok");
+  });
+  // "WLAN vergessen": Flag setzen -> loop() löscht Creds + rebootet -> Setup-Portal.
+  server.on("/wifireset", HTTP_GET, [](AsyncWebServerRequest* r){
+    wifiResetReq = true;
+    r->send(200, "text/plain", "ok");
+  });
+  // Scan anstoßen (loop() ruft WiFi.scanNetworks auf) + Ergebnis pollen.
+  server.on("/scan",      HTTP_GET, [](AsyncWebServerRequest* r){ scanReq = true; r->send(200, "application/json", "{\"scanning\":true}"); });
+  server.on("/scan.json", HTTP_GET, handleScanJson);
+
+  // Captive-Portal-Detection-URLs (Android/iOS/Windows/Firefox) -> Portal.
+  const char* det[] = { "/generate_204", "/gen_204", "/hotspot-detect.html",
+                        "/canonical.html", "/ncsi.txt", "/connecttest.txt", "/redirect" };
+  for (auto u : det) server.on(u, HTTP_ANY, captiveTo);
+  server.onNotFound(captiveTo);                    // alles Übrige im apMode -> Portal
+}
+
 // Alle Routen registrieren und den Async-Webserver starten.
 void setupWeb() {
-  server.on("/",          HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", MAIN_PAGE); });
+  server.on("/",          HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", apMode ? PORTAL_PAGE : MAIN_PAGE); });
   server.on("/strom",     HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", STROM_PAGE); });
   server.on("/waerme",    HTTP_GET, [](AsyncWebServerRequest* r){ r->send_P(200, "text/html", WAERME_PAGE); });
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* r){
@@ -195,5 +243,6 @@ void setupWeb() {
   server.on("/read",      HTTP_GET, [](AsyncWebServerRequest* r){ reqRead = true; r->send(200, "text/plain", "ok"); });
   server.on("/toggle",    HTTP_GET, [](AsyncWebServerRequest* r){ reqIdx = 1 - reqIdx; r->send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });
   setupWebOta();
+  setupProvisioning();                             // WLAN-Setup-Portal + Captive-Routen
   server.begin();
 }

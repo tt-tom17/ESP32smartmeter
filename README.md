@@ -17,9 +17,8 @@ esp32-zaehler-reader/
 │  ├─ net_mqtt.h            # WLAN- + MQTT-Verbindung
 │  ├─ heat.h                # Wärmezähler (D0 / IEC 62056-21)
 │  ├─ strom.h               # Stromzähler (SML-Parser)
-│  ├─ web.h                 # JSON-API, Konfig-Handler, Routen, Web-OTA
-│  ├─ web_pages.h           # CSS + HTML-Seiten (PROGMEM)
-│  └─  secrets.example.h    # Vorlage für die WLAN-Daten (committet)
+│  ├─ web.h                 # JSON-API, Konfig-Handler, Routen, Web-OTA, Setup-Portal
+│  └─ web_pages.h           # CSS + HTML-Seiten (PROGMEM), inkl. Setup-Portal
 ├─ platformio.ini
 ├─ README.md
 └─ LICENSE
@@ -29,14 +28,19 @@ Der Sketch ist auf mehrere Header aufgeteilt, die alle als **eine**
 Translation-Unit aus `zaehler-esp32.ino` in fester Reihenfolge inkludiert werden
 (keine separate `.cpp`-Kompilierung nötig).
 
-## Einrichtung (WLAN-Zugangsdaten)
-Die WLAN-Zugangsdaten liegen **nicht** im Sketch, sondern in `secrets.h`
-(per `.gitignore` ausgeschlossen):
+## Einrichtung (WLAN per Setup-Portal)
+Die WLAN-Zugangsdaten werden **nicht** einkompiliert, sondern beim Erststart
+komfortabel über ein eigenes Setup-WLAN eingerichtet und im NVS gespeichert:
 
-```bash
-cp zaehler-esp32/secrets.example.h zaehler-esp32/secrets.h
-# danach WIFI_SSID und WIFI_PASS in secrets.h eintragen
-```
+1. Nach dem ersten Flashen (oder wenn keine WLAN-Daten hinterlegt sind) öffnet der
+   ESP ein **offenes WLAN `Zaehler-Setup`**.
+2. Mit Handy/Laptop verbinden — die Setup-Seite erscheint automatisch
+   (Captive Portal), sonst im Browser **`http://192.168.4.1`** öffnen.
+3. Über **Suchen** das eigene WLAN wählen, Passwort eingeben, **Speichern & Neustart**.
+4. Der ESP startet neu und verbindet sich als Station mit dem Heim-WLAN.
+
+Später kann das WLAN unter **Einstellungen → WLAN → „WLAN vergessen"** zurückgesetzt
+werden (öffnet nach dem Neustart wieder das Setup-Portal).
 
 
 ## Verdrahtung
@@ -76,9 +80,8 @@ Wichtigster Wert: **`6.8` = Wärmemenge in MWh**.
 ## Bauen — PlatformIO (VSCode, empfohlen)
 Funktioniert aus demselben Repo — `platformio.ini` zeigt per `src_dir` auf den
 Sketch-Ordner, du musst nichts nach `src/` kopieren.
-1. `secrets.h` anlegen (siehe oben) — sie liegt in `zaehler-esp32/`.
-2. PlatformIO-Projekt öffnen (Ordner `esp32-zaehler-reader/`).
-3. Bauen/Flashen über die PlatformIO-Toolbar oder:
+1. PlatformIO-Projekt öffnen (Ordner `esp32-zaehler-reader/`).
+2. Bauen/Flashen über die PlatformIO-Toolbar oder:
    ```bash
    pio run                 # kompilieren
    pio run -t upload       # per USB flashen
@@ -97,8 +100,9 @@ aktivieren — oder bequemer das Web-OTA (siehe unten).
 - Rest (WiFi, ArduinoOTA, Update, Preferences) kommt mit dem ESP32-Core.
 
 ## Inbetriebnahme
-1. `secrets.h` anlegen (siehe oben).
-2. **Erster Flash per USB** (danach reicht das Web-OTA unter `/update`).
+1. **Erster Flash per USB** (danach reicht das Web-OTA unter `/update`).
+2. WLAN über das **Setup-Portal** einrichten (siehe „Einrichtung (WLAN per
+   Setup-Portal)" oben) → der ESP verbindet sich danach mit dem Heim-WLAN.
 3. Seriellen Monitor @115200 öffnen → IP-Adresse notieren.
 4. Im Browser `http://<IP>/` öffnen → Live-Anzeige; `http://<IP>/api` liefert das
    rohe JSON (gut zum Debuggen).

@@ -145,6 +145,10 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
  <div class=row><span>Passwort</span><input type=password id=mpw placeholder="leer = unverändert"></div>
  <button onclick=saveMqtt()>Speichern</button><div class=s id=mmsg></div></div>
+<div class=card><h2>📶 WLAN</h2>
+ <div class=row><span>Verbunden mit</span><b id=wssid>–</b></div>
+ <button class=alt onclick=wreset()>WLAN vergessen &amp; neu einrichten</button>
+ <div class=s>Öffnet nach dem Neustart das offene Setup-WLAN „Zaehler-Setup".</div></div>
 <div class=card><h2>Firmware-Update</h2>
 <p class=s>Arduino-IDE: <b>Sketch &rarr; Kompilierte Binärdatei exportieren</b>, dann die <code>.ino.bin</code> hier wählen. (PlatformIO: <code>firmware.bin</code>)</p>
 <input type=file id=file accept='.bin'><br><button onclick='go()'>Flashen</button>
@@ -167,9 +171,12 @@ function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
  '&host='+encodeURIComponent(mhost.value)+
  '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
  '&pw='+encodeURIComponent(mpw.value);
- fetch(q).then(()=>{mmsg.textContent='gespeichert – verbinde neu…';mpw.value='';});}
+ fetch(q).then(()=>{mmsg.textContent=mEnabled?'gespeichert – verbinde neu…':'gespeichert';mpw.value='';});}
+function wreset(){if(!confirm('WLAN-Daten löschen und neu einrichten? Der Zähler startet neu und öffnet das Setup-WLAN „Zaehler-Setup".'))return;
+ fetch('/wifireset').then(()=>{alert('Neustart… bitte mit dem WLAN „Zaehler-Setup" verbinden.');});}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;const ae=document.activeElement;
  if(d.fw_ver!=null)fwv.textContent=d.fw_ver;if(d.fw_build)fwb.textContent=d.fw_build;
+ wssid.textContent=d.wifi_ssid||'–';
  sEnabled=s.enabled;sen.textContent=s.enabled?'AN':'AUS';sen.className=s.enabled?'':'alt';
  if(ae!==sgpio)sgpio.value=s.gpio;
  if(ae!==ssi)ssi.value=s.send_s;
@@ -179,6 +186,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
  if(ae!==hrx)hrx.value=w.rx;
  mEnabled=d.mqtt_en;men.textContent=d.mqtt_en?'AN':'AUS';men.className=d.mqtt_en?'':'alt';
  if(!d.mqtt_en)pill(mqtt,false,'aus');else pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
+ if(d.mqtt&&mmsg.textContent.indexOf('verbinde')>=0)mmsg.textContent='';
  if(ae!==mroot)mroot.value=d.mqtt_root||'';
  if(ae!==mhost)mhost.value=d.mqtt_host||'';
  if(ae!==mport)mport.value=d.mqtt_port||1883;
@@ -191,3 +199,35 @@ var x=new XMLHttpRequest(),d=new FormData();d.append('f',f);
 x.upload.onprogress=function(e){p.textContent=Math.round(e.loaded/e.total*100)+'%';};
 x.onloadend=function(){p.textContent=x.responseText||'fertig';};
 x.open('POST','/update');x.send(d);}</script></body></html>)HTML";
+
+// Setup-Portal: wird im apMode unter "/" (und über den Captive-Redirect) ausgeliefert.
+const char PORTAL_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
+<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>WLAN einrichten</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
+<div class=card><h2>📶 WLAN einrichten</h2>
+ <p class=s>Wähle dein WLAN, gib das Passwort ein und speichere. Der Zähler startet
+ danach neu und verbindet sich mit deinem Netz.</p>
+ <div class=row><span>Netzwerk</span><button class=alt id=scanb onclick=scan()>Suchen</button></div>
+ <select id=sel onchange="ssid.value=this.value"></select>
+ <div class=row><span>SSID</span><input id=ssid placeholder="WLAN-Name"></div>
+ <div class=row><span>Passwort</span><input type=password id=pass placeholder="WLAN-Passwort"></div>
+ <button onclick=save()>Speichern &amp; Neustart</button>
+ <div class=s id=msg></div></div>
+<div class=foot>ESP32 Zähler · Ersteinrichtung</div>
+<script>
+let timer=null;
+function scan(){scanb.textContent='sucht…';fetch('/scan').then(poll);}
+function poll(){clearTimeout(timer);timer=setTimeout(async()=>{
+ try{const d=await(await fetch('/scan.json')).json();
+  if(d.scanning){poll();return;}
+  scanb.textContent='Suchen';
+  sel.innerHTML='<option value="">– Netzwerk wählen –</option>';
+  for(const n of d.nets){var o=document.createElement('option');o.value=n.ssid;
+   o.textContent=n.ssid+(n.enc?' 🔒':'')+'  '+n.rssi+'dBm';sel.appendChild(o);}
+ }catch(e){scanb.textContent='Suchen';}
+},1200);}
+function save(){var s=ssid.value.trim();if(!s){msg.textContent='Bitte eine SSID angeben.';return;}
+ fetch('/wifisave?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(pass.value))
+  .then(()=>{msg.textContent='Gespeichert – Neustart. Verbinde dich wieder mit deinem Heim-WLAN.';});}
+scan();
+</script></body></html>)HTML";

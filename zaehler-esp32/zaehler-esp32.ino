@@ -36,6 +36,7 @@
  */
 
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <PubSubClient.h>
@@ -45,8 +46,8 @@
 #include <math.h>
 #include <string.h>
 
-#include "secrets.h"     // WLAN-Zugangsdaten: WIFI_SSID / WIFI_PASS
-                         // -> secrets.example.h nach secrets.h kopieren und ausfüllen
+// WLAN-Zugangsdaten kommen aus dem NVS und werden per Setup-Portal (offener SoftAP
+// "Zaehler-Setup") eingerichtet — keine secrets.h mehr nötig. Siehe net_mqtt.h.
 #include "config.h"      // Konstanten / Defaults
 #include "globals.h"     // globale Objekte + Laufzeit-Zustand
 #include "net_mqtt.h"    // WLAN + MQTT
@@ -64,6 +65,7 @@ void setup() {
 
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
+  loadWifiCreds();                   // WLAN-Zugangsdaten (leer -> Setup-Portal)
   heatEnabled   = prefs.getUChar("heat_en", 1) != 0;
   heatIntervalH = prefs.getUChar("heat_h", HEAT_INTERVAL_DEF_H);
   if (heatIntervalH < HEAT_INTERVAL_MIN_H) heatIntervalH = HEAT_INTERVAL_MIN_H;
@@ -81,7 +83,8 @@ void setup() {
   mqttUser   = prefs.getString("mqtt_user", "");
   mqttPass   = prefs.getString("mqtt_pass", "");
   mqttRoot   = prefs.getString("mqtt_root", MQTT_ROOT_DEF);
-  Serial.printf("[CFG] Wärme %s %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
+  Serial.printf("[CFG] WLAN '%s' | Wärme %s %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
+                wifiSsid.length() ? wifiSsid.c_str() : "(unkonfiguriert -> Portal)",
                 heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin,
                 stromEnabled ? "AN" : "AUS", stromRxPin,
                 mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
@@ -108,7 +111,21 @@ void loop() {
   if (restartAt && millis() >= restartAt) { restartAt = 0; ESP.restart(); }
   ArduinoOTA.handle();
   if (otaActive) return;
-  ensureWifi();
+  ensureWifi();                      // im apMode bedient das nur den Captive-DNS
+
+  // WLAN-Provisioning: heikle Seiteneffekte gehören in loop(), nicht in Web-Handler
+  if (credSaveReq)  { credSaveReq  = false; saveWifiCreds(pendingSsid, pendingPass); restartAt = millis() + 500; }
+  if (wifiResetReq) { wifiResetReq = false; clearWifiCreds();                        restartAt = millis() + 500; }
+
+  if (apMode) {                      // im Setup-Portal ruhen Zähler + MQTT
+    if (scanReq) { scanReq = false; if (WiFi.scanComplete() == -2) WiFi.scanNetworks(true); }
+    // Selbstheilung: Gerät MIT gespeicherten Creds nach Timeout neu starten und
+    // STA erneut versuchen (Router nach Stromausfall inzwischen oben). Frisches
+    // Gerät (keine Creds) bleibt zum Einrichten dauerhaft im Portal.
+    if (!wifiSsid.isEmpty() && millis() - apStartedAt > AP_PORTAL_TIMEOUT_MS) restartAt = millis();
+    return;
+  }
+
   ensureMqtt();
   mqtt.loop();
 
