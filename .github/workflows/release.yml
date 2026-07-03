@@ -1,0 +1,75 @@
+name: Release
+
+# Läuft bei jedem Push eines Version-Tags (z. B. v1.0.2):
+#   FW_VERSION in config.h erhöhen → committen → git tag vX.Y.Z && git push origin vX.Y.Z
+# GitHub baut dann die Firmware, erzeugt factory.bin + ota.bin und veröffentlicht ein Release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # nötig, um das GitHub-Release zu erstellen
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version aus Tag ableiten
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: FW_VERSION in config.h muss zum Tag passen
+        run: |
+          CFG="$(sed -nE 's/.*#define[[:space:]]+FW_VERSION[[:space:]]+"([^"]+)".*/\1/p' zaehler-esp32/config.h)"
+          echo "config.h FW_VERSION = '$CFG', Tag-Version = '${{ steps.ver.outputs.version }}'"
+          if [ "$CFG" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::FW_VERSION ($CFG) passt nicht zum Tag (${{ steps.ver.outputs.version }}). Vor dem Tag config.h anpassen."
+            exit 1
+          fi
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: PlatformIO installieren
+        run: pip install --upgrade platformio
+
+      - name: Firmware bauen
+        run: pio run
+
+      - name: Release-Images erzeugen (factory + ota)
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          B=.pio/build/esp32dev
+          BOOTAPP="$(find ~/.platformio/packages -path '*/tools/partitions/boot_app0.bin' -print -quit)"
+          ESPTOOL="$(find ~/.platformio/packages -name esptool.py -print -quit)"
+          mkdir -p dist
+          cp "$B/firmware.bin" "dist/ESP32smartmeter-${V}-ota.bin"
+          python "$ESPTOOL" --chip esp32 merge_bin -o "dist/ESP32smartmeter-${V}-factory.bin" \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000  "$B/bootloader.bin" \
+            0x8000  "$B/partitions.bin" \
+            0xe000  "$BOOTAPP" \
+            0x10000 "$B/firmware.bin"
+          echo "SHA256:"; sha256sum dist/*.bin
+
+      - name: GitHub-Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.ver.outputs.version }}
+          files: |
+            dist/ESP32smartmeter-${{ steps.ver.outputs.version }}-factory.bin
+            dist/ESP32smartmeter-${{ steps.ver.outputs.version }}-ota.bin
+          body: |
+            Firmware ${{ steps.ver.outputs.version }}
+
+            Flashen — siehe [docs/flashen.md](docs/flashen.md):
+            - **factory.bin** → USB-Erstflash an Offset `0x0` (esptool-js / esptool)
+            - **ota.bin** → Web-OTA unter `http://<IP>/update`
