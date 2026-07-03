@@ -20,3 +20,7 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Claude-spezifische Dateien/Ordner — nur lokal, nie ins Repo committen
+CLAUDE.md
+.claude/
