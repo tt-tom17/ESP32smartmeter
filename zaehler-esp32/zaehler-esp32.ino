@@ -45,6 +45,7 @@
 #include <Preferences.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 
 // WLAN-Zugangsdaten kommen aus dem NVS und werden per Setup-Portal (offener SoftAP
 // "Zaehler-Setup") eingerichtet — keine secrets.h mehr nötig. Siehe net_mqtt.h.
@@ -67,9 +68,9 @@ void setup() {
   prefs.begin("zaehler", false);
   loadWifiCreds();                   // WLAN-Zugangsdaten (leer -> Setup-Portal)
   heatEnabled   = prefs.getUChar("heat_en", 1) != 0;
-  heatIntervalH = prefs.getUChar("heat_h", HEAT_INTERVAL_DEF_H);
-  if (heatIntervalH < HEAT_INTERVAL_MIN_H) heatIntervalH = HEAT_INTERVAL_MIN_H;
-  if (heatIntervalH > HEAT_INTERVAL_MAX_H) heatIntervalH = HEAT_INTERVAL_MAX_H;
+  heatIntervalH = snapHeatInterval(prefs.getUChar("heat_h", HEAT_INTERVAL_DEF_H));
+  heatStartMin  = prefs.getUShort("heat_start", HEAT_START_DEF_MIN);
+  if (heatStartMin > 1439) heatStartMin = HEAT_START_DEF_MIN;
   heatTxPin     = prefs.getUChar("heat_tx", HEAT_TX_DEF);
   heatRxPin     = prefs.getUChar("heat_rx", HEAT_RX_DEF);
   stromEnabled  = prefs.getUChar("strom_en", 1) != 0;
@@ -83,15 +84,17 @@ void setup() {
   mqttUser   = prefs.getString("mqtt_user", "");
   mqttPass   = prefs.getString("mqtt_pass", "");
   mqttRoot   = prefs.getString("mqtt_root", MQTT_ROOT_DEF);
-  Serial.printf("[CFG] WLAN '%s' | Wärme %s %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
+  Serial.printf("[CFG] WLAN '%s' | Wärme %s ab %02u:%02u alle %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
                 wifiSsid.length() ? wifiSsid.c_str() : "(unkonfiguriert -> Portal)",
-                heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin,
+                heatEnabled ? "AN" : "AUS", heatStartMin / 60, heatStartMin % 60,
+                heatIntervalH, heatTxPin, heatRxPin,
                 stromEnabled ? "AN" : "AUS", stromRxPin,
                 mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
 
   applyStrom();                      // Strom-UART je nach Konfig starten
 
   ensureWifi();
+  startTime();                       // NTP-Sync für feste Wärme-Abfragezeiten starten
 
   mqtt.setServer(mqttServer.c_str(), mqttPort);
   mqtt.setBufferSize(512);
@@ -145,8 +148,22 @@ void loop() {
     publishStrom();
   }
 
-  if (heatEnabled && (lastHeat == 0 || now - lastHeat >= heatIntervalMs())) {
-    lastHeat = now;
-    readHeat();
+  // Wärme-Abfrage zu festen Wanduhrzeiten (NTP). Kantengesteuert: der jeweils fällige
+  // Slot wird an seiner Epoch-Sekunde erkannt und genau EINMAL gelesen -> kein Drift
+  // durch Lesedauer/Timeouts, kein Doppel-Feuern, und ein verpasster Slot (Gerät war
+  // blockiert) wird beim nächsten freien loop() nachgeholt.
+  if (heatEnabled) {
+    if (timeValid()) {
+      time_t slot = heatDueSlot();
+      if (slot != 0 && (long)slot != lastHeatSlot) {
+        lastHeatSlot = (long)slot;
+        lastHeat = now;
+        readHeat();
+      }
+    } else if (millis() > NTP_GRACE_MS && (lastHeat == 0 || now - lastHeat >= heatIntervalMs())) {
+      // Fallback ohne NTP (kein Internet): wie früher das millis()-Intervall.
+      lastHeat = now;
+      readHeat();
+    }
   }
 }

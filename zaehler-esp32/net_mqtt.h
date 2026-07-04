@@ -57,6 +57,14 @@ void ensureWifi() {
   }
 }
 
+// NTP starten: setzt TZ (DE, inkl. DST) und die Zeitserver. Läuft asynchron im
+// Hintergrund weiter und synchronisiert, sobald STA verbunden ist. Mehrfachaufruf
+// (z.B. nach Reconnect) ist unschädlich. Ohne Internet bleibt time() < TIME_VALID.
+void startTime() {
+  configTzTime(TZ_INFO, NTP_SERVER1, NTP_SERVER2);
+  Serial.println("[NTP] Zeitsync gestartet (TZ " TZ_INFO ")");
+}
+
 void ensureMqtt() {
   if (!mqttEnabled || mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
 

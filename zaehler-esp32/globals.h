@@ -45,7 +45,8 @@ char telegram[TELEGRAM_BUF];
 
 // ─── Konfiguration (aus NVS geladen) ──────────────────────────────────────────
 bool     heatEnabled   = true;
-uint8_t  heatIntervalH = HEAT_INTERVAL_DEF_H;
+uint8_t  heatIntervalH = HEAT_INTERVAL_DEF_H;   // nur Teiler von 24 (siehe snapHeatInterval)
+uint16_t heatStartMin  = HEAT_START_DEF_MIN;    // Startuhrzeit (Minuten seit Mitternacht)
 uint8_t  heatTxPin     = HEAT_TX_DEF;
 uint8_t  heatRxPin     = HEAT_RX_DEF;
 bool     stromEnabled  = true;
@@ -62,6 +63,42 @@ String   mqttRoot   = MQTT_ROOT_DEF;          // Haupttopic, in Einstellungen ed
 
 inline unsigned long heatIntervalMs() { return (unsigned long)heatIntervalH * 3600000UL; }
 inline unsigned long stromMqttMs()    { return (unsigned long)stromMqttS * 1000UL; }
+
+// ─── Wärme-Scheduler: feste Wanduhrzeiten (NTP), driftfrei ────────────────────
+// Intervall auf den nächstgelegenen Teiler von 24 h einrasten (Web darf zwar nur
+// gültige Werte schicken, aber alte NVS-Werte / krumme Eingaben abfangen).
+inline uint8_t snapHeatInterval(int h) {
+  uint8_t best = HEAT_DIVISORS[0]; int bd = 1000;
+  for (uint8_t d : HEAT_DIVISORS) { int diff = abs((int)d - h); if (diff < bd) { bd = diff; best = d; } }
+  return best;
+}
+
+// Echtzeit verfügbar (NTP synchron)?
+inline bool timeValid() { return time(nullptr) > TIME_VALID_EPOCH; }
+
+// Epoch-Sekunde des zuletzt fälligen Slots (<= jetzt); 0 falls Zeit noch nicht gültig.
+// DURCHLAUFENDES Raster: alle Minuten, die ≡ Startuhrzeit modulo Intervall sind — über
+// Tagesgrenzen hinweg. Da das Intervall ein Teiler von 24 h ist, sind es 24/Intervall
+// Slots pro Tag, die sich jeden Tag zur GLEICHEN Uhrzeit wiederholen, lückenlos über
+// Mitternacht (z.B. 18:45/2h -> …16:45,18:45,20:45,22:45,00:45,02:45…).
+// dueMin = Minuten seit heutiger Mitternacht des jüngsten Slots (kann <0 = gestern);
+// mktime() normalisiert das und rechnet DST-fest in Epoch um.
+inline time_t heatDueSlot() {
+  time_t now = time(nullptr);
+  if (now <= TIME_VALID_EPOCH) return 0;
+  struct tm lt; localtime_r(&now, &lt);
+  int minOfDay  = lt.tm_hour * 60 + lt.tm_min;
+  int intervalM = (int)heatIntervalH * 60;
+  int r = ((minOfDay - (int)heatStartMin) % intervalM + intervalM) % intervalM;  // 0..intervalM-1
+  struct tm s = lt; s.tm_hour = 0; s.tm_min = minOfDay - r; s.tm_sec = 0; s.tm_isdst = -1;
+  return mktime(&s);
+}
+
+// Epoch-Sekunde des nächsten Slots (> jetzt). Slots sind gleichmäßig -> due + Intervall.
+inline time_t heatNextSlot() {
+  time_t d = heatDueSlot();
+  return d ? d + (time_t)heatIntervalH * 3600L : 0;
+}
 
 // MQTT-Topic-Präfixe aus dem Haupttopic ableiten (inkl. abschließendem '/').
 inline String heatPrefix()  { return mqttRoot + "/Heat/"; }    // <root>/Heat/...
@@ -91,4 +128,5 @@ uint8_t  smlBuf[SML_BUF];
 int      smlLen = 0;
 
 unsigned long lastHeat = 0, lastStromMqtt = 0;
+long lastHeatSlot = -1;             // Epoch des zuletzt gelesenen Slots (kantengesteuert)
 bool otaActive = false;            // true während OTA-Upload -> Messung pausiert

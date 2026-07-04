@@ -12,10 +12,23 @@ String jsonEscape(const String& s) {
 }
 
 void handleApi(AsyncWebServerRequest* req) {
+  // Sekunden bis zur nächsten Wärme-Abfrage + nächste Uhrzeit als HH:MM.
   unsigned long nextS = 0;
-  if (heatEnabled && lastHeat != 0) {
-    unsigned long el = millis() - lastHeat;
-    nextS = (el >= heatIntervalMs()) ? 0 : (heatIntervalMs() - el) / 1000;
+  char nextAt[6] = "--:--";
+  bool timeOk = timeValid();
+  char startHHMM[6];
+  snprintf(startHHMM, sizeof startHHMM, "%02u:%02u", heatStartMin / 60, heatStartMin % 60);
+  if (heatEnabled) {
+    if (timeOk) {
+      time_t nowT = time(nullptr);
+      time_t nxt  = heatNextSlot();
+      if (nxt > nowT) nextS = (unsigned long)(nxt - nowT);
+      struct tm nt; localtime_r(&nxt, &nt);
+      strftime(nextAt, sizeof nextAt, "%H:%M", &nt);
+    } else if (lastHeat != 0) {                 // Fallback ohne NTP: millis()-Intervall
+      unsigned long el = millis() - lastHeat;
+      nextS = (el >= heatIntervalMs()) ? 0 : (heatIntervalMs() - el) / 1000;
+    }
   }
 
   String j = "{";
@@ -54,7 +67,10 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"heat\":{";
   j += "\"enabled\":" + String(heatEnabled ? "true" : "false");
   j += ",\"interval_h\":" + String(heatIntervalH);
+  j += ",\"start_hhmm\":\"" + String(startHHMM) + "\"";
   j += ",\"next_read_s\":" + String(nextS);
+  j += ",\"next_at\":\"" + String(nextAt) + "\"";
+  j += ",\"time_ok\":" + String(timeOk ? "true" : "false");
   j += ",\"tx\":" + String(heatTxPin);
   j += ",\"rx\":" + String(heatRxPin);
   j += ",\"request\":\"" + String(HEAT_REQ_NAMES[reqIdx]) + "\"";
@@ -82,18 +98,27 @@ void handleSetHeat(AsyncWebServerRequest* req) {
     heatEnabled = reqArg(req, "en").toInt() != 0;
     prefs.putUChar("heat_en", heatEnabled ? 1 : 0);
   }
-  if (reqHas(req, "h")) {
-    int h = reqArg(req, "h").toInt();
-    if (h < HEAT_INTERVAL_MIN_H) h = HEAT_INTERVAL_MIN_H;
-    if (h > HEAT_INTERVAL_MAX_H) h = HEAT_INTERVAL_MAX_H;
-    heatIntervalH = (uint8_t)h;
+  if (reqHas(req, "h")) {                        // Intervall -> nächster Teiler von 24 h
+    heatIntervalH = snapHeatInterval(reqArg(req, "h").toInt());
     prefs.putUChar("heat_h", heatIntervalH);
     pubHeatCfg = true;                          // MQTT-Publish in loop() (thread-safe)
   }
+  if (reqHas(req, "start")) {                    // Startuhrzeit "HH:MM" -> Minuten seit 0 Uhr
+    String s = reqArg(req, "start");
+    int c = s.indexOf(':');
+    int hh = (c >= 0 ? s.substring(0, c) : s).toInt();
+    int mm = c >= 0 ? s.substring(c + 1).toInt() : 0;
+    int m  = hh * 60 + mm;
+    if (m < 0) m = 0; if (m > 1439) m = 1439;
+    heatStartMin = (uint16_t)m;
+    prefs.putUShort("heat_start", heatStartMin);
+    lastHeatSlot = -1;                           // neuen Fahrplan sofort greifen lassen
+  }
   if (reqHas(req, "tx")) { int g = reqArg(req, "tx").toInt(); if (validGpio(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
   if (reqHas(req, "rx")) { int g = reqArg(req, "rx").toInt(); if (validGpio(g)) { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
-  Serial.printf("[CFG] Wärme: %s, %u h, TX=GPIO%u RX=GPIO%u\n",
-                heatEnabled ? "AN" : "AUS", heatIntervalH, heatTxPin, heatRxPin);
+  Serial.printf("[CFG] Wärme: %s, ab %02u:%02u alle %u h, TX=GPIO%u RX=GPIO%u\n",
+                heatEnabled ? "AN" : "AUS", heatStartMin / 60, heatStartMin % 60,
+                heatIntervalH, heatTxPin, heatRxPin);
   req->send(200, "text/plain", "ok");
 }
 

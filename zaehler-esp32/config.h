@@ -39,8 +39,20 @@ static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.0.1"
+#define FW_VERSION  "1.1.0"
 #define FW_BUILD    (__DATE__ " " __TIME__)
+
+// ─── Zeit / NTP ───────────────────────────────────────────────────────────────
+// Für die Wärme-Abfrage zu festen Wanduhrzeiten braucht der ESP echte Zeit (er hat
+// keine gepufferte RTC). NTP wird nach dem WLAN-Connect gestartet; TZ inkl. Sommer-/
+// Winterzeit für Deutschland -> eingestellte Uhrzeiten bleiben über DST stabil.
+#define TZ_INFO      "CET-1CEST,M3.5.0,M10.5.0/3"
+#define NTP_SERVER1  "pool.ntp.org"
+#define NTP_SERVER2  "time.google.com"
+// Zeit gilt als synchron, sobald die Uhr nach ~2020 steht (Epoch > 1.6e9).
+static const time_t TIME_VALID_EPOCH = 1600000000UL;
+// Ohne NTP-Sync (kein Internet) nach dieser Zeit auf millis()-Intervall zurückfallen.
+static const unsigned long NTP_GRACE_MS = 20000;
 
 // ─── Wärmezähler (UART1) — Default-Pins (Web-änderbar) ────────────────────────
 #define HEAT_TX_DEF   17     // -> Lesekopf Rx (300 Baud Anfrage)
@@ -48,10 +60,17 @@ static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 static const unsigned long HEAT_FIRST_BYTE_MS = 5000;   // Warten auf 1. Antwortbyte
 static const unsigned long HEAT_IDLE_MS       = 1000;   // Telegramm-Ende = Stille
 
-// Leseintervall Wärme: 1..24 h (Web-einstellbar, NVS)
+// Leseintervall Wärme: NUR Teiler von 24 h (Web-einstellbar, NVS). Dadurch ergeben
+// die Slots ab Startuhrzeit jeden Tag exakt dieselben Wanduhrzeiten OHNE Lücke über
+// Mitternacht (z.B. 6 h ab 05:55 -> 05:55/11:55/17:55/23:55, dann wieder 05:55).
 #define HEAT_INTERVAL_MIN_H  1
 #define HEAT_INTERVAL_MAX_H  24
 #define HEAT_INTERVAL_DEF_H  1
+static const uint8_t HEAT_DIVISORS[] = { 1, 2, 3, 4, 6, 8, 12, 24 };  // 24 % d == 0
+
+// Startuhrzeit der Wärme-Abfrage als Minuten seit Mitternacht (0..1439, NVS).
+// Default 0 = Mitternacht -> mit 1 h Intervall wie bisher zur vollen Stunde.
+#define HEAT_START_DEF_MIN  0
 
 // Umschaltbare Anfrage: 0 = "/?!\r\n" (IEC-Standard, funktioniert am UH50),
 //                       1 = "/#!\r\n" (herstellerspezifischer Direktmodus, Fallback)

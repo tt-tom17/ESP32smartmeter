@@ -70,7 +70,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();
  let v='–';for(const x of d.heat.codes)if(x.code=='6.8')v=x.value;
  h68.textContent=v;
  pill(hs,d.heat.enabled&&d.heat.status.indexOf('ok')==0,d.heat.enabled?d.heat.status:'aus');
- next.textContent=d.heat.enabled?fmtNext(d.heat.next_read_s):'aus';
+ next.textContent=!d.heat.enabled?'aus':(d.heat.time_ok?d.heat.next_at+' (in '+fmtNext(d.heat.next_read_s)+')':fmtNext(d.heat.next_read_s));
 }catch(e){}}
 tick();setInterval(tick,3000);
 </script></body></html>)HTML";
@@ -112,7 +112,7 @@ const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
 function cmd(u){fetch(u).then(()=>setTimeout(tick,500));}
 async function tick(){try{const d=await(await fetch('/api')).json();const w=d.heat;
- next.textContent=w.enabled?fmtNext(w.next_read_s):'aus';
+ next.textContent=!w.enabled?'aus':(w.time_ok?w.next_at+' (in '+fmtNext(w.next_read_s)+')':fmtNext(w.next_read_s));
  let h='';for(const x of w.codes)h+='<tr><td>'+x.code+'</td><td><b>'+(x.raw||x.value)+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
  st.textContent=w.status;ident.textContent=w.ident||'–';req.textContent=w.request;
@@ -132,7 +132,12 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <button onclick=sSave()>Speichern</button><div class=s id=smsg></div></div>
 <div class=card><h2>🔥 Wärme</h2>
  <div class=row><span>Auslesen</span><button id=hen onclick=hToggle()>–</button></div>
- <div class=row><span>Leseintervall</span><span><input type=number id=hih min=1 max=24> h</span></div>
+ <div class=row><span>Startuhrzeit</span><input type=time id=hstart></div>
+ <div class=row><span>Intervall</span><select id=hih>
+   <option value=1>1 h</option><option value=2>2 h</option><option value=3>3 h</option>
+   <option value=4>4 h</option><option value=6>6 h</option><option value=8>8 h</option>
+   <option value=12>12 h</option><option value=24>24 h</option></select></div>
+ <div class=s>Nur Teiler von 24 h &rarr; feste Uhrzeiten jeden Tag, ohne Lücke über Mitternacht.</div>
  <div class=row><span>TX-GPIO (&rarr; Lesekopf Rx)</span><select id=htx></select></div>
  <div class=row><span>RX-GPIO (&larr; Lesekopf Tx)</span><select id=hrx></select></div>
  <button onclick=hSave()>Speichern</button><div class=s id=hmsg></div></div>
@@ -166,7 +171,7 @@ function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value).then(()=>{sm
 function hToggle(){fetch('/setheat?en='+(hEnabled?0:1)).then(()=>setTimeout(tick,200));}
 let mEnabled=false;
 function mToggle(){fetch('/setmqtt?en='+(mEnabled?0:1)).then(()=>setTimeout(tick,200));}
-function hSave(){fetch('/setheat?h='+hih.value+'&tx='+htx.value+'&rx='+hrx.value).then(()=>{hmsg.textContent='gespeichert';});}
+function hSave(){fetch('/setheat?h='+hih.value+'&start='+encodeURIComponent(hstart.value||'00:00')+'&tx='+htx.value+'&rx='+hrx.value).then(()=>{hmsg.textContent='gespeichert';});}
 function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
  '&host='+encodeURIComponent(mhost.value)+
  '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
@@ -174,24 +179,23 @@ function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
  fetch(q).then(()=>{mmsg.textContent=mEnabled?'gespeichert – verbinde neu…':'gespeichert';mpw.value='';});}
 function wreset(){if(!confirm('WLAN-Daten löschen und neu einrichten? Der Zähler startet neu und öffnet das Setup-WLAN „Zaehler-Setup".'))return;
  fetch('/wifireset').then(()=>{alert('Neustart… bitte mit dem WLAN „Zaehler-Setup" verbinden.');});}
-async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;const ae=document.activeElement;
+let inited=false;   // Eingabefelder NUR einmal befüllen, sonst überschreibt der Poll die Eingabe
+async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;
+ // Live-Status (keine Eingabefelder) — darf jeder Poll aktualisieren:
  if(d.fw_ver!=null)fwv.textContent=d.fw_ver;if(d.fw_build)fwb.textContent=d.fw_build;
  wssid.textContent=d.wifi_ssid||'–';
  sEnabled=s.enabled;sen.textContent=s.enabled?'AN':'AUS';sen.className=s.enabled?'':'alt';
- if(ae!==sgpio)sgpio.value=s.gpio;
- if(ae!==ssi)ssi.value=s.send_s;
  hEnabled=w.enabled;hen.textContent=w.enabled?'AN':'AUS';hen.className=w.enabled?'':'alt';
- if(ae!==hih)hih.value=w.interval_h;
- if(ae!==htx)htx.value=w.tx;
- if(ae!==hrx)hrx.value=w.rx;
  mEnabled=d.mqtt_en;men.textContent=d.mqtt_en?'AN':'AUS';men.className=d.mqtt_en?'':'alt';
  if(!d.mqtt_en)pill(mqtt,false,'aus');else pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
  if(d.mqtt&&mmsg.textContent.indexOf('verbinde')>=0)mmsg.textContent='';
- if(ae!==mroot)mroot.value=d.mqtt_root||'';
- if(ae!==mhost)mhost.value=d.mqtt_host||'';
- if(ae!==mport)mport.value=d.mqtt_port||1883;
- if(ae!==muser)muser.value=d.mqtt_user||'';
- if(ae!==mpw)mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
+ mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
+ // Eingabefelder nur beim ERSTEN erfolgreichen Poll füllen (danach gehört das Feld dem User):
+ if(!inited){inited=true;
+  sgpio.value=s.gpio;ssi.value=s.send_s;
+  hih.value=w.interval_h;hstart.value=w.start_hhmm;htx.value=w.tx;hrx.value=w.rx;
+  mroot.value=d.mqtt_root||'';mhost.value=d.mqtt_host||'';mport.value=d.mqtt_port||1883;muser.value=d.mqtt_user||'';
+ }
 }catch(e){}}
 tick();setInterval(tick,3000);
 function go(){var f=document.getElementById('file').files[0];if(!f)return;
