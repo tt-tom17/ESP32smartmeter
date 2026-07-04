@@ -16,7 +16,9 @@ und Build-Zeitstempel (zeigt, ob ein OTA-Flash wirklich angekommen ist).
   - **⚡ Strom:** Auslesen AN/AUS, Lesekopf-GPIO, **MQTT-Sendeintervall (2–300 s)**.
     Das Sendeintervall ist das Pendant zu Tasmotas `TelePeriod`; der SML-Zähler
     sendet selbst 1–2×/s, schneller als ~2 s bringt also keine neuen Werte.
-  - **🔥 Wärme:** Auslesen AN/AUS, **Leseintervall 1–24 h**, TX-/RX-GPIO.
+  - **🔥 Wärme:** Auslesen AN/AUS, **Startuhrzeit** + **Intervall (nur Teiler von 24 h:
+    1/2/3/4/6/8/12/24)**, TX-/RX-GPIO. Abfragen laufen zu festen Wanduhrzeiten (NTP,
+    sommer-/winterzeitfest); die Startseite zeigt die nächste Uhrzeit + Countdown.
   - **MQTT:** **An/Aus-Schalter (Default aus)**, Verbindungsstatus, **Haupttopic**,
     **Host/IP, Port, User, Passwort** (speichern → verbindet neu; leeres
     Passwortfeld lässt das gespeicherte PW unverändert).
@@ -27,7 +29,8 @@ Alle Einstellungen (an/aus, Intervalle, GPIOs, MQTT-Broker, Haupttopic) liegen i
 
 ## Steuer-Endpunkte (auch per `curl`)
 - `GET /api` — kompletter Zustand als JSON
-- `GET /setheat?en=0|1&h=N&tx=G&rx=G` — Wärme: an/aus, Intervall (h), TX-/RX-GPIO
+- `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
+  Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
 - `GET /setstrom?en=0|1&rx=G&s=Sek` — Strom: an/aus, RX-GPIO, Sendeintervall
 - `GET /setmqtt?en=0|1&root=...&host=...&port=1883&user=...&pw=...` — MQTT konfigurieren
 - `GET /read` — Wärme sofort lesen
@@ -47,7 +50,10 @@ zwei Zweigen **`Heat`** und **`Power`**:
   `durchfluss_m3h` (6.33), `betriebsstunden_h` (6.31), `batterie_monate` (6.35),
   `vorlauf_c` / `ruecklauf_c` (aus 9.4)
 - `data/<L+G-Code>` — **alle** Codes generisch + `/unit`, `/raw`
-- `status`, `interval_h`
+- `status`, `interval_h` (Leseintervall in h, retained)
+- `next_read` — **nächste geplante Abfrage** als lokale Zeit `YYYY-MM-DD HH:MM`
+  (retained; ohne NTP-Sync `unknown`). Aktualisiert nach jeder *geplanten* Abfrage
+  und bei Änderung von Intervall/Startuhrzeit.
 
 **Strom (`<root>/Power/…`)**:
 - `bezug_kwh`, `einspeisung_kwh`, `leistung_w` — benannte Hauptwerte

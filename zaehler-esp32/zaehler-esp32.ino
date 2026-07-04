@@ -135,7 +135,7 @@ void loop() {
   // Vom Async-Webserver angeforderte, NICHT thread-safe Aktionen hier ausführen:
   if (applyStromPending) { applyStromPending = false; applyStrom(); }
   if (applyMqttPending)  { applyMqttPending  = false; applyMqtt(); }
-  if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((heatPrefix()  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); }
+  if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((heatPrefix()  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); publishHeatNext(); }
   if (pubStromCfg) { pubStromCfg = false; mqtt.publish((stromPrefix() + "send_s").c_str(),     String(stromMqttS).c_str(),    true); }
   if (reqRead)     { reqRead     = false; readHeat(); lastHeat = millis(); }
 
@@ -159,11 +159,13 @@ void loop() {
         lastHeatSlot = (long)slot;
         lastHeat = now;
         readHeat();
+        publishHeatNext();               // nächsten Slot als <root>/Heat/next_read publizieren
       }
     } else if (millis() > NTP_GRACE_MS && (lastHeat == 0 || now - lastHeat >= heatIntervalMs())) {
       // Fallback ohne NTP (kein Internet): wie früher das millis()-Intervall.
       lastHeat = now;
       readHeat();
+      publishHeatNext();                 // ohne NTP -> "unknown"
     }
   }
 }

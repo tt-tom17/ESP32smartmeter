@@ -112,6 +112,18 @@ long baudFromChar(char z, bool* modeC) {
   }
 }
 
+// Nächsten fälligen Abfrage-Slot als retained Topic <root>/Heat/next_read
+// veröffentlichen (lokale Zeit "YYYY-MM-DD HH:MM"); ohne NTP-Sync "unknown".
+// Nur aus loop() aufrufen (thread-safe); publish() ist bei getrenntem MQTT ein No-Op.
+void publishHeatNext() {
+  char buf[20] = "unknown";
+  if (timeValid()) {
+    time_t nxt = heatNextSlot();
+    if (nxt) { struct tm nt; localtime_r(&nxt, &nt); strftime(buf, sizeof buf, "%Y-%m-%d %H:%M", &nt); }
+  }
+  mqtt.publish((heatPrefix() + "next_read").c_str(), buf, true);
+}
+
 void readHeat() {
   heatReads++;
   heatLastAt = millis();

@@ -113,6 +113,7 @@ void handleSetHeat(AsyncWebServerRequest* req) {
     heatStartMin = (uint16_t)m;
     prefs.putUShort("heat_start", heatStartMin);
     lastHeatSlot = -1;                           // neuen Fahrplan sofort greifen lassen
+    pubHeatCfg = true;                           // interval_h + next_read in loop() neu publizieren
   }
   if (reqHas(req, "tx")) { int g = reqArg(req, "tx").toInt(); if (validGpio(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
   if (reqHas(req, "rx")) { int g = reqArg(req, "rx").toInt(); if (validGpio(g)) { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
