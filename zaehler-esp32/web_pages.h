@@ -20,6 +20,8 @@ nav a.active{background:#334155;color:#fff;font-weight:600}
 .big{font-size:2rem;font-weight:700}
 table{width:100%;border-collapse:collapse;font-size:.92rem}
 td{padding:7px 4px;border-bottom:1px solid #334155}
+td:first-child{white-space:nowrap}
+td:nth-child(2){overflow-wrap:anywhere}
 td.u{color:#94a3b8;text-align:right;white-space:nowrap}
 .row{display:flex;justify-content:space-between;align-items:center;margin:9px 0;gap:10px}
 .s{color:#94a3b8;font-size:.82rem}
