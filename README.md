@@ -50,5 +50,6 @@ Ausführlich (inkl. Web-OTA & WLAN-Portal): **[docs/flashen.md](docs/flashen.md)
 - **[Flashen & Einrichten](docs/flashen.md)** — `.bin`-Flash, Web-OTA, WLAN-Setup-Portal, Inbetriebnahme
 - **[Selber bauen](docs/bauen.md)** — PlatformIO & Arduino IDE, Projektstruktur, Versionierung
 - **[Wärme-Auslesung](docs/waermezaehler.md)** — D0 / IEC-62056-21-Ableseablauf
-- **[Schnittstellen](docs/schnittstellen.md)** — Weboberfläche, API-Endpunkte, MQTT-Topics
+- **[Weboberfläche](docs/weboberflaeche.md)** — Seiten-Rundgang (Start/Strom/Wärme/Einstellungen) & Setup-Portal
+- **[Schnittstellen](docs/schnittstellen.md)** — JSON-API, `curl`-Endpunkte, MQTT-Topics
 - **[Troubleshooting & Grenzen](docs/troubleshooting.md)**

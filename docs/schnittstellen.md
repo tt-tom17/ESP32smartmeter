@@ -28,12 +28,48 @@ Alle Einstellungen (an/aus, Intervalle, GPIOs, MQTT-Broker, Haupttopic) liegen i
 **NVS (`Preferences`, Namespace `zaehler`)** und überstehen einen Reboot.
 
 ## Steuer-Endpunkte (auch per `curl`)
-- `GET /api` — kompletter Zustand als JSON
+Dieselbe Konfiguration, die die Weboberfläche unter **Einstellungen** setzt, geht auch
+direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Testen.
+
+**Wie es funktioniert:**
+- **Alles sind `GET`-Anfragen** — auch die Setter. Parameter hängen als Query-String
+  (`?key=wert&key2=wert2`) an der URL, es gibt keinen Request-Body.
+- **Alle Parameter sind optional** — mitgegebene Werte werden übernommen, weggelassene
+  bleiben unverändert (partielles Update). `curl "http://<IP>/setheat?en=0"` schaltet nur
+  das Auslesen aus und lässt Intervall/GPIOs in Ruhe.
+- **Antwort der Setter** ist schlicht `text/plain` mit `ok`. Nur `/api` liefert JSON.
+- **`<IP>`** ist die Adresse des Geräts im WLAN (im Footer/Router ablesbar, z. B.
+  `192.168.178.217`). Werte werden im NVS gespeichert und überstehen einen Reboot.
+
+**Endpunkte:**
+- `GET /api` — kompletter Zustand als JSON (Strom, Wärme, WLAN, MQTT-Status, Zeitplan)
 - `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
   Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
 - `GET /setstrom?en=0|1&rx=G&s=Sek` — Strom: an/aus, RX-GPIO, Sendeintervall
 - `GET /setmqtt?en=0|1&root=...&host=...&port=1883&user=...&pw=...` — MQTT konfigurieren
-- `GET /read` — Wärme sofort lesen
+  (leeres/weggelassenes `pw` lässt das gespeicherte Passwort unverändert)
+- `GET /read` — Wärme **jetzt** einmalig lesen (verschiebt den geplanten Zeitplan nicht)
+- `GET /toggle` — Sign-on-Sequenz des Wärmezählers umschalten (`/?!` ↔ `/#!`), falls ein
+  Zähler auf die Standard-Sequenz nicht antwortet; Antwort = aktive Sequenz
+
+**Beispiele:**
+```bash
+IP=192.168.178.217
+
+curl "http://$IP/api"                                   # Zustand als JSON abrufen
+curl "http://$IP/api" | jq .heat.next_at                # nächste geplante Wärme-Abfrage
+
+curl "http://$IP/read"                                  # Wärme sofort einmal lesen
+
+curl "http://$IP/setheat?start=05:55&h=6"               # Raster 05:55, alle 6 h
+curl "http://$IP/setheat?en=0"                          # Wärme-Auslesen aus (Rest bleibt)
+curl "http://$IP/setheat?h=5"                            # 5 -> rastet auf 4 h ein
+
+curl "http://$IP/setstrom?en=1&s=10"                    # Strom an, MQTT-Sendeintervall 10 s
+
+curl "http://$IP/setmqtt?en=1&host=192.168.178.55&port=1883&root=ESP32smartmeter"
+curl "http://$IP/setmqtt?user=zaehler&pw=geheim"        # nur Zugangsdaten setzen
+```
 
 > `/api` liefert `mqtt_en` + `mqtt_root/host/port/user` + `mqtt_haspw`, das
 > **Passwort selbst wird nie ausgeliefert**.
