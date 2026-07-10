@@ -91,7 +91,24 @@ void handleApi(AsyncWebServerRequest* req) {
   req->send(200, "application/json", j);
 }
 
-bool validGpio(int g) { return g >= 0 && g <= 39; }
+// Erlaubte GPIOs — deckungsgleich mit INPINS/OUTPINS der Weboberfläche (web_pages.h).
+// Nicht enthalten: GPIO6–11 (interner SPI-Flash), GPIO20/24/28–31 (auf dem Board nicht
+// herausgeführt), GPIO1/3 (UART0 = serielle Konsole) und die Strapping-Pins GPIO0/2/12/15.
+// Ohne diese Prüfung könnte ein direkter API-Aufruf (curl) das Gerät unbrauchbar machen.
+bool validInPin(int g) {
+  switch (g) {
+    case 16: case 17: case 18: case 19:
+    case 21: case 22: case 23: case 25:
+    case 26: case 27: case 32: case 33:
+    case 34: case 35: case 36: case 39:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Ausgänge: wie validInPin(), aber ohne die reinen Eingangs-Pins GPIO34–39.
+bool validOutPin(int g) { return validInPin(g) && g < 34; }
 
 void handleSetHeat(AsyncWebServerRequest* req) {
   if (reqHas(req, "en")) {
@@ -115,8 +132,8 @@ void handleSetHeat(AsyncWebServerRequest* req) {
     lastHeatSlot = -1;                           // neuen Fahrplan sofort greifen lassen
     pubHeatCfg = true;                           // interval_h + next_read in loop() neu publizieren
   }
-  if (reqHas(req, "tx")) { int g = reqArg(req, "tx").toInt(); if (validGpio(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
-  if (reqHas(req, "rx")) { int g = reqArg(req, "rx").toInt(); if (validGpio(g)) { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
+  if (reqHas(req, "tx")) { int g = reqArg(req, "tx").toInt(); if (validOutPin(g)) { heatTxPin = g; prefs.putUChar("heat_tx", g); } }
+  if (reqHas(req, "rx")) { int g = reqArg(req, "rx").toInt(); if (validInPin(g))  { heatRxPin = g; prefs.putUChar("heat_rx", g); } }
   Serial.printf("[CFG] Wärme: %s, ab %02u:%02u alle %u h, TX=GPIO%u RX=GPIO%u\n",
                 heatEnabled ? "AN" : "AUS", heatStartMin / 60, heatStartMin % 60,
                 heatIntervalH, heatTxPin, heatRxPin);
@@ -132,7 +149,7 @@ void handleSetStrom(AsyncWebServerRequest* req) {
   }
   if (reqHas(req, "rx")) {
     int g = reqArg(req, "rx").toInt();
-    if (validGpio(g)) { stromRxPin = g; prefs.putUChar("strom_rx", g); changed = true; }
+    if (validInPin(g)) { stromRxPin = g; prefs.putUChar("strom_rx", g); changed = true; }
   }
   if (reqHas(req, "s")) {                       // MQTT-Sendeintervall (s)
     int s = reqArg(req, "s").toInt();
