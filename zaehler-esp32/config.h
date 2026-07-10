@@ -39,7 +39,7 @@ static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.1.4"
+#define FW_VERSION  "1.1.5"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Zeit / NTP ───────────────────────────────────────────────────────────────
