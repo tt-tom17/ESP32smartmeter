@@ -45,6 +45,19 @@ Ausführlich (inkl. Web-OTA & WLAN-Portal): **[docs/flashen.md](docs/flashen.md)
 > selbst sendet. (RX frei) Die GPIOs sind zur Laufzeit über die
 > Weboberfläche umstellbar.
 
+### Pin-Referenz (MH-ET LIVE D1 mini ESP32)
+
+![Pinout MH-ET LIVE D1 mini ESP32](docs/img/esp32-d1mini-pinout.png)
+
+Die Default-Pins **GPIO16/17/27** sind alle „grün = immer nutzbar“. Wer die GPIOs über die
+Weboberfläche umstellt, sollte die Farbcodierung beachten:
+
+- **RX / Dateneingänge** (Wärme-RX, Strom-RX): grüne Pins **oder** die reinen Eingangs-Pins
+  **GPIO34/35/36/39** (nur Eingang → ideal als Lesekopf-RX).
+- **TX / Ausgang** (Wärme-TX): nur output-fähige Pins — **nicht** GPIO34–39.
+- **Tabu:** GPIO6–11 (interner SPI-Flash). Die Pin-Auswahl der Weboberfläche
+  (INPINS/OUTPINS) bietet ohnehin nur sichere Pins an.
+
 ## Dokumentation
 
 - **[Flashen & Einrichten](docs/flashen.md)** — `.bin`-Flash, Web-OTA, WLAN-Setup-Portal, Inbetriebnahme
