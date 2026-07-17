@@ -82,9 +82,11 @@ const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <title>Strom</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>⚡ Stromzähler</h2>
- <div class=row><span>Status</span><span id=ss class=pill>–</span></div></div>
-<div class=card><h2>Alle Werte</h2><table id=tbl></table>
- <div class=s style=margin-top:8px>Hauptwerte: Bezug <b id=bz>–</b> · Einspeisung <b id=es>–</b> · Leistung <b id=lw>–</b></div></div>
+ <div class=row><span>Status</span><span id=ss class=pill>–</span></div>
+ <div class=row><span>Leistung</span><b id=lw>–</b></div>
+ <div class=row><span>Bezug</span><b id=bz>–</b></div>
+ <div class=row><span>Einspeisung</span><b id=es>–</b></div></div>
+<div class=card><h2>Alle Werte</h2><table id=tbl></table></div>
 <script>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom;

@@ -43,7 +43,7 @@ const char* dlmsUnit(uint8_t u) {
     case 27: return "W";   case 28: return "VA";  case 29: return "var";
     case 30: return "Wh";  case 31: return "VAh"; case 32: return "varh";
     case 33: return "A";   case 35: return "V";   case 44: return "Hz";
-    case 4:  return "°";   case 8:  return "°C";
+    case 4:  return "°";   case 8:  return "°";   case 9:  return "°C";
     default: return "";
   }
 }
