@@ -186,3 +186,21 @@ void applyStrom() {
     Serial.println("[CFG] Strom: AUS");
   }
 }
+
+// Sende-Diode des SML-Kopfes auf definierten Pegel parken (verhindert Einstreuung in den
+// Lesesensor). Web-Setter setzt nur Werte + applySendLedPending; die GPIO-Aktion macht loop().
+void applySendLed() {
+  static uint8_t activePin = 255;              // zuletzt belegter Pin (255 = keiner)
+  if (activePin != 255 && (!sendledEnabled || activePin != sendledPin)) {
+    pinMode(activePin, INPUT);                 // alten Pin freigeben (aus oder gewechselt)
+    activePin = 255;
+  }
+  if (sendledEnabled) {
+    pinMode(sendledPin, OUTPUT);
+    digitalWrite(sendledPin, sendledLevel ? HIGH : LOW);
+    activePin = sendledPin;
+    Serial.printf("[CFG] Sende-Diode: AN, GPIO%u=%s\n", sendledPin, sendledLevel ? "HIGH" : "LOW");
+  } else {
+    Serial.println("[CFG] Sende-Diode: AUS");
+  }
+}

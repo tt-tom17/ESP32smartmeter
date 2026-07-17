@@ -80,7 +80,10 @@ static const char* HEAT_REQ_NAMES[2] = { "/?!", "/#!" };
 // ─── Stromzähler (UART2, Hichi SML) — Default-Pin (Web-änderbar) ──────────────
 #define STROM_RX_DEF  27     // <- Hichi Tx (Daten vom Lesekopf)
 #define SML_INVERT    false  // manche Hichi-Köpfe invertieren -> ggf. true testen
-#define SENDLED_PIN  25   // Sende-Diode des SML-Kopfes: Firmware zieht HIGH -> Diode dunkel (LOW liess sie leuchten -> Einstreuung in Lesesensor)
+// Sende-Diode des SML-Kopfes parken (verhindert Einstreuung in den Lesesensor) — Web-änderbar
+#define SENDLED_EN_DEF     1    // Sende-Diode standardmäßig aktiv parken
+#define SENDLED_PIN_DEF    25   // Board-GPIO, an dem die Sende-Diode haengt
+#define SENDLED_LEVEL_DEF  1    // 1 = HIGH haelt die Diode dunkel (dieser Hichi-Kopf); ggf. 0 = LOW
 // Strom-Sendeintervall (MQTT) — Pendant zu Tasmota TelePeriod, Web-einstellbar (NVS).
 // Der SML-Zähler sendet selbst 1-2x/s; schneller als ~1-2 s bringt keine neuen Werte.
 #define STROM_MQTT_MIN_S  2
