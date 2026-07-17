@@ -9,7 +9,7 @@ ausgelesen. Der folgende Ablauf ist am echten UH50 verifiziert:
    kodiert die Datenbaudrate (Ziffer 0–6 = Mode C mit ACK, Buchstabe A–F = Mode B).
 3. Bei Mode C ein **ACK** `0x06 '0' Z '0' \r\n` @300 senden.
 4. Auf die Datenbaudrate (beim UH50 **2400, Mode B**) 7E1 umschalten und den
-   Datenblock bis `!` lesen → ~66 OBIS-Codes.
+   Datenblock bis `!` lesen → alle OBIS-Codes.
 
 Wichtigster Wert: **`6.8` = Wärmemenge in MWh**.
 

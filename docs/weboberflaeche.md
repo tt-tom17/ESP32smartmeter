@@ -48,7 +48,7 @@ Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
 - **nächste Lesung** — geplante Uhrzeit + Countdown.
 - **Diagnose** — Status, Identifikation (`/MMMZident`), aktive Anfrage-Sequenz,
   Lesungen ok/total, Länge des letzten Telegramms.
-- **Alle Werte** — Tabelle mit **allen** ~66 OBIS-Werten des Zählers
+- **Alle Werte** — Tabelle mit **allen** OBIS-Werten des Zählers
   (Code · Wert · Einheit); die Wert-Spalte zeigt den Rohwert, falls einer vorliegt.
 
 <!-- TODO Bild: Wärmeseite mit Diagnose + Werte-Tabelle -->
