@@ -6,9 +6,9 @@ seriellen Log ablesbar). Sie läuft auf einem **asynchronen Webserver** und blei
 auch **während eines Wärme-Lesezyklus** bedienbar.
 
 Alle Statusseiten aktualisieren sich **automatisch alle 3 Sekunden** (Polling der
-JSON-API `/api`) — kein manuelles Neuladen nötig. Im **Footer** jeder Seite stehen
-**Firmware-Version** und **Build-Zeitstempel**; daran erkennt man, ob ein OTA-Flash
-wirklich angekommen ist.
+JSON-API `/api`) — kein manuelles Neuladen nötig. Im **Footer** der **Start-** und der
+**Einstellungsseite** stehen **Firmware-Version** und **Build-Zeitstempel**; daran
+erkennt man, ob ein OTA-Flash wirklich angekommen ist.
 
 **Navigation** (Leiste oben auf jeder Seite): **Start · Strom · Wärme · Einstellungen**
 
@@ -49,7 +49,7 @@ Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
 - **Diagnose** — Status, Identifikation (`/MMMZident`), aktive Anfrage-Sequenz,
   Lesungen ok/total, Länge des letzten Telegramms.
 - **Alle Werte** — Tabelle mit **allen** ~66 OBIS-Werten des Zählers
-  (Code · Wert · Einheit · Rohwert).
+  (Code · Wert · Einheit); die Wert-Spalte zeigt den Rohwert, falls einer vorliegt.
 
 <!-- TODO Bild: Wärmeseite mit Diagnose + Werte-Tabelle -->
 ![Wärmeseite](img/waerme.png)

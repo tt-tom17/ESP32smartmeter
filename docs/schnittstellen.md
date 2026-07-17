@@ -46,6 +46,10 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
 - `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
   Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
 - `GET /setstrom?en=0|1&rx=G&s=Sek` — Strom: an/aus, RX-GPIO, Sendeintervall
+- `GET /setsendled?en=0|1&gpio=G&lvl=0|1` — Sende-Diode des SML-Lesekopfs „parken":
+  an/aus, GPIO, Pegel (`1`=HIGH, `0`=LOW; welcher Pegel die Diode dunkel hält, hängt vom
+  Kopf ab). Verhindert, dass die Sende-IR-Diode in den eigenen Empfänger streut; Status
+  im `/api`-JSON unter `sendled.enabled/gpio/level` (siehe [troubleshooting.md](troubleshooting.md))
 - `GET /setmqtt?en=0|1&root=...&host=...&port=1883&user=...&pw=...` — MQTT konfigurieren
   (leeres/weggelassenes `pw` lässt das gespeicherte Passwort unverändert)
 - `GET /read` — Wärme **jetzt** einmalig lesen (verschiebt den geplanten Zeitplan nicht)
