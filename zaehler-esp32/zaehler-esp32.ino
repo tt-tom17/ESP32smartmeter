@@ -64,6 +64,10 @@ void setup() {
   delay(200);
   Serial.println("\nESP32 Zähler-Reader startet...");
 
+  // Sende-Diode des SML-Kopfes dunkel halten: auf HIGH ziehen (bei LOW leuchtet sie -> Einstreuung in den Lesesensor)
+  pinMode(SENDLED_PIN, OUTPUT);
+  digitalWrite(SENDLED_PIN, HIGH);
+
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
   loadWifiCreds();                   // WLAN-Zugangsdaten (leer -> Setup-Portal)

@@ -177,6 +177,7 @@ void applyStrom() {
   if (stromEnabled) {
     Sml.setRxBufferSize(4096);
     Sml.begin(9600, SERIAL_8N1, stromRxPin, -1, SML_INVERT);
+    pinMode(stromRxPin, INPUT_PULLUP);  // Hichi-Open-Collector: RX-Leitung nicht floaten lassen
     stromStatus = "init";
     Serial.printf("[CFG] Strom: AN, GPIO%u\n", stromRxPin);
   } else {
