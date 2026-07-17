@@ -38,7 +38,7 @@ Detailseite zum Stromzähler (SML):
   Bezug / Einspeisung / Leistung als Kurzzeile.
 
 <!-- TODO Bild: Stromseite mit Werte-Tabelle -->
-[Stromseite](img/strom.png)
+![Stromseite](img/strom.png)
 
 ## Wärme (`/waerme`)
 Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
