@@ -32,10 +32,10 @@ wirklich angekommen ist.
 ## Strom (`/strom`)
 Detailseite zum Stromzähler (SML):
 
-- **Status** des SML-Parsers als Pill.
-- **Alle Werte** — Tabelle mit **sämtlichen** generisch aus dem SML-Telegramm geparsten
-  OBIS-Werten (Code · Wert · Einheit). Darunter die benannten Hauptwerte
-  Bezug / Einspeisung / Leistung als Kurzzeile.
+- **⚡ Stromzähler** — Status des SML-Parsers als Pill, darunter die benannten
+  Hauptwerte **Leistung / Bezug / Einspeisung**.
+- **Alle Werte** — darunter die Tabelle mit **sämtlichen** generisch aus dem
+  SML-Telegramm geparsten OBIS-Werten (Code · Wert · Einheit).
 
 <!-- TODO Bild: Stromseite mit Werte-Tabelle -->
 ![Stromseite](img/strom.png)
