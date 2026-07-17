@@ -64,6 +64,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += "]}";
 
   // Wärme
+  j += ",\"sendled\":{\"enabled\":" + String(sendledEnabled ? "true" : "false") + ",\"gpio\":" + String(sendledPin) + ",\"level\":" + String(sendledLevel ? 1 : 0) + "}";
   j += ",\"heat\":{";
   j += "\"enabled\":" + String(heatEnabled ? "true" : "false");
   j += ",\"interval_h\":" + String(heatIntervalH);
@@ -160,6 +161,16 @@ void handleSetStrom(AsyncWebServerRequest* req) {
     pubStromCfg = true;                          // MQTT-Publish in loop() (thread-safe)
   }
   if (changed) applyStromPending = true;         // UART-Re-Init in loop() (thread-safe)
+  req->send(200, "text/plain", "ok");
+}
+
+// Sende-Diode des SML-Kopfes konfigurieren: en (an/aus), gpio, lvl (1=HIGH / 0=LOW).
+void handleSetSendLed(AsyncWebServerRequest* req) {
+  bool changed = false;
+  if (reqHas(req, "en"))   { sendledEnabled = reqArg(req, "en").toInt() != 0; prefs.putUChar("sled_en", sendledEnabled ? 1 : 0); changed = true; }
+  if (reqHas(req, "gpio")) { int g = reqArg(req, "gpio").toInt(); if (validOutPin(g)) { sendledPin = g; prefs.putUChar("sled_pin", g); changed = true; } }
+  if (reqHas(req, "lvl"))  { sendledLevel = reqArg(req, "lvl").toInt() != 0; prefs.putUChar("sled_lvl", sendledLevel ? 1 : 0); changed = true; }
+  if (changed) applySendLedPending = true;       // GPIO in loop() setzen (thread-safe)
   req->send(200, "text/plain", "ok");
 }
 
@@ -282,6 +293,7 @@ void setupWeb() {
   server.on("/api",       HTTP_GET, handleApi);
   server.on("/setheat",   HTTP_GET, handleSetHeat);
   server.on("/setstrom",  HTTP_GET, handleSetStrom);
+  server.on("/setsendled",HTTP_GET, handleSetSendLed);
   server.on("/setmqtt",   HTTP_GET, handleSetMqtt);
   server.on("/read",      HTTP_GET, [](AsyncWebServerRequest* r){ reqRead = true; r->send(200, "text/plain", "ok"); });
   server.on("/toggle",    HTTP_GET, [](AsyncWebServerRequest* r){ reqIdx = 1 - reqIdx; r->send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });

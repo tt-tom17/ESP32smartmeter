@@ -43,7 +43,7 @@ const char* dlmsUnit(uint8_t u) {
     case 27: return "W";   case 28: return "VA";  case 29: return "var";
     case 30: return "Wh";  case 31: return "VAh"; case 32: return "varh";
     case 33: return "A";   case 35: return "V";   case 44: return "Hz";
-    case 4:  return "°";   case 8:  return "°C";
+    case 4:  return "°";   case 8:  return "°";   case 9:  return "°C";
     default: return "";
   }
 }
@@ -177,11 +177,30 @@ void applyStrom() {
   if (stromEnabled) {
     Sml.setRxBufferSize(4096);
     Sml.begin(9600, SERIAL_8N1, stromRxPin, -1, SML_INVERT);
+    pinMode(stromRxPin, INPUT_PULLUP);  // Hichi-Open-Collector: RX-Leitung nicht floaten lassen
     stromStatus = "init";
     Serial.printf("[CFG] Strom: AN, GPIO%u\n", stromRxPin);
   } else {
     stromValid = false;
     stromStatus = "aus";
     Serial.println("[CFG] Strom: AUS");
+  }
+}
+
+// Sende-Diode des SML-Kopfes auf definierten Pegel parken (verhindert Einstreuung in den
+// Lesesensor). Web-Setter setzt nur Werte + applySendLedPending; die GPIO-Aktion macht loop().
+void applySendLed() {
+  static uint8_t activePin = 255;              // zuletzt belegter Pin (255 = keiner)
+  if (activePin != 255 && (!sendledEnabled || activePin != sendledPin)) {
+    pinMode(activePin, INPUT);                 // alten Pin freigeben (aus oder gewechselt)
+    activePin = 255;
+  }
+  if (sendledEnabled) {
+    pinMode(sendledPin, OUTPUT);
+    digitalWrite(sendledPin, sendledLevel ? HIGH : LOW);
+    activePin = sendledPin;
+    Serial.printf("[CFG] Sende-Diode: AN, GPIO%u=%s\n", sendledPin, sendledLevel ? "HIGH" : "LOW");
+  } else {
+    Serial.println("[CFG] Sende-Diode: AUS");
   }
 }

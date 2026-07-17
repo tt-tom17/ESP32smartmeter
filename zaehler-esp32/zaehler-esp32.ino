@@ -78,6 +78,9 @@ void setup() {
   stromMqttS    = prefs.getUShort("strom_s", STROM_MQTT_DEF_S);
   if (stromMqttS < STROM_MQTT_MIN_S) stromMqttS = STROM_MQTT_MIN_S;
   if (stromMqttS > STROM_MQTT_MAX_S) stromMqttS = STROM_MQTT_MAX_S;
+  sendledEnabled = prefs.getUChar("sled_en", SENDLED_EN_DEF) != 0;
+  sendledPin     = prefs.getUChar("sled_pin", SENDLED_PIN_DEF);
+  sendledLevel   = prefs.getUChar("sled_lvl", SENDLED_LEVEL_DEF) != 0;
   mqttEnabled = prefs.getUChar("mqtt_en", MQTT_ENABLED_DEF ? 1 : 0) != 0;
   mqttServer = prefs.getString("mqtt_host", MQTT_SERVER_DEF);
   mqttPort   = prefs.getUShort("mqtt_port", MQTT_PORT_DEF);
@@ -92,6 +95,7 @@ void setup() {
                 mqttServer.c_str(), mqttPort, mqttUser.length() ? mqttUser.c_str() : "(anonym)");
 
   applyStrom();                      // Strom-UART je nach Konfig starten
+  applySendLed();                    // Sende-Diode des SML-Kopfes parken
 
   ensureWifi();
   startTime();                       // NTP-Sync für feste Wärme-Abfragezeiten starten
@@ -134,6 +138,7 @@ void loop() {
 
   // Vom Async-Webserver angeforderte, NICHT thread-safe Aktionen hier ausführen:
   if (applyStromPending) { applyStromPending = false; applyStrom(); }
+  if (applySendLedPending) { applySendLedPending = false; applySendLed(); }
   if (applyMqttPending)  { applyMqttPending  = false; applyMqtt(); }
   if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((heatPrefix()  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); publishHeatNext(); }
   if (pubStromCfg) { pubStromCfg = false; mqtt.publish((stromPrefix() + "send_s").c_str(),     String(stromMqttS).c_str(),    true); }

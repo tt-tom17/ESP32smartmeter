@@ -29,6 +29,7 @@ String   wifiPass = "";
 volatile bool reqRead          = false;   // /read  -> Wärme jetzt lesen
 volatile bool applyStromPending = false;  // Strom-UART neu initialisieren
 volatile bool applyMqttPending  = false;  // MQTT neu verbinden
+volatile bool applySendLedPending = false; // Sende-Diode neu parken
 volatile bool pubHeatCfg        = false;  // interval_h per MQTT publizieren
 volatile bool pubStromCfg       = false;  // send_s per MQTT publizieren
 volatile bool credSaveReq       = false;  // neue WLAN-Daten gesetzt -> speichern + reboot
@@ -52,6 +53,9 @@ uint8_t  heatRxPin     = HEAT_RX_DEF;
 bool     stromEnabled  = true;
 uint8_t  stromRxPin    = STROM_RX_DEF;
 uint16_t stromMqttS    = STROM_MQTT_DEF_S;   // MQTT-Sendeintervall Strom (Sekunden)
+bool     sendledEnabled = SENDLED_EN_DEF;    // Sende-Diode des SML-Kopfes parken
+uint8_t  sendledPin     = SENDLED_PIN_DEF;
+bool     sendledLevel   = SENDLED_LEVEL_DEF; // true = HIGH haelt die Diode dunkel
 int      reqIdx        = 0;                   // Index in HEAT_REQUESTS/HEAT_REQ_NAMES
 // MQTT-Broker-Konfiguration (aus NVS)
 bool     mqttEnabled = MQTT_ENABLED_DEF;       // MQTT global an/aus (Default aus)
