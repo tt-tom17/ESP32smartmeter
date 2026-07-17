@@ -30,7 +30,7 @@ wirklich angekommen ist.
 ![Startseite](img/weboberflaeche.png)
 
 ## Strom (`/strom`)
-Detailseite zum Stromzähler (SML/Hichi):
+Detailseite zum Stromzähler (SML):
 
 - **Status** des SML-Parsers als Pill.
 - **Alle Werte** — Tabelle mit **sämtlichen** generisch aus dem SML-Telegramm geparsten
@@ -38,7 +38,7 @@ Detailseite zum Stromzähler (SML/Hichi):
   Bezug / Einspeisung / Leistung als Kurzzeile.
 
 <!-- TODO Bild: Stromseite mit Werte-Tabelle -->
-<!-- ![Stromseite](img/strom.png) -->
+[Stromseite](img/strom.png)
 
 ## Wärme (`/waerme`)
 Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
@@ -58,7 +58,10 @@ Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
 Sämtliche Konfiguration an einem Ort. Änderungen werden im **NVS** gespeichert und
 überstehen einen Reboot. Jede Karte hat einen eigenen **Speichern**-Button.
 
-- **⚡ Strom** — Auslesen an/aus, Lesekopf-GPIO, MQTT-Sendeintervall (2–300 s).
+- **⚡ Strom** — Auslesen an/aus, Lesekopf-GPIO, MQTT-Sendeintervall (2–300 s) sowie
+  **Sende-Diode** des Lesekopfs: an/aus, GPIO und Pegel (HIGH (dunkel) / LOW). Hält die
+  Sende-IR-Diode dunkel, damit sie den eigenen Empfänger nicht blendet (siehe
+  [troubleshooting.md](troubleshooting.md)).
 - **🔥 Wärme** — Auslesen an/aus, **Startuhrzeit**, **Intervall** (Dropdown, nur Teiler
   von 24 h: 1/2/3/4/6/8/12/24), TX-/RX-GPIO. Die Abfragen laufen zu festen Wanduhrzeiten
   (NTP, sommer-/winterzeitfest).
