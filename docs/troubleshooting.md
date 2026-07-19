@@ -28,9 +28,9 @@ curl "http://<IP>/api" | jq .reset_reason
 
 | Wert | Bedeutung | Richtung |
 | --- | --- | --- |
-| `brownout` | Versorgungsspannung eingebrochen | **Stromversorgung** — stabiles 5-V-Netzteil / kabelgebundener Uplink (W5500) statt WLAN-Peaks |
+| `brownout` | Versorgungsspannung eingebrochen | **Stromversorgung** — stabiles 5-V-Netzteil |
 | `poweron` | echtes Ein-/Ausschalten (Stromausfall) | Steckkontakt / Netzteil prüfen |
-| `panic` | Firmware-Absturz (Exception) | **Firmware-Bug** — Ethernet o. Ä. hilft *nicht* |
+| `panic` | Firmware-Absturz (Exception) | **Firmware-Bug** |
 | `int_wdt` / `task_wdt` / `wdt` | Watchdog: `loop()`/Task hing zu lange | Firmware-Bug / Blockade |
 | `sw` | gewollter Software-Reboot (u. a. nach OTA-Flash) | kein Problem |
 | `ext` | Reset-Pin / externer Reset | Verdrahtung / EN-Pin |
