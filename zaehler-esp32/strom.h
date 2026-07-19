@@ -5,6 +5,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+// SML-Transport-CRC16 (CRC-16/X-25, wie libSML): poly 0x8408 (reflektiert), init
+// 0xFFFF, xorout 0xFFFF, danach Byte-Swap in die On-Wire-Reihenfolge. Bitweise
+// gerechnet (kein 512-B-Tabellen-Footprint; bei ~1 kB alle 10 s vernachlässigbar).
+uint16_t smlCrc16(const uint8_t* d, int len) {
+  uint16_t crc = 0xFFFF;
+  for (int i = 0; i < len; i++) {
+    crc ^= d[i];
+    for (int k = 0; k < 8; k++) crc = (crc & 1) ? (crc >> 1) ^ 0x8408 : (crc >> 1);
+  }
+  crc ^= 0xFFFF;
+  return (uint16_t)(((crc & 0xFF) << 8) | ((crc >> 8) & 0xFF));   // Byte-Swap
+}
+
 // Ein TLV-Element überspringen (rekursiv für Listen). Liefert Zeiger danach.
 const uint8_t* smlSkip(const uint8_t* p, const uint8_t* end) {
   if (p >= end) return end;
@@ -101,7 +114,15 @@ void smlScanAll(const uint8_t* buf, int len) {
     if (dup) continue;
 
     double v = (double)value * pow(10.0, (double)scaler);
-    char vb[24]; dtostrf(v, 0, (scaler < 0 ? -scaler : 0), vb);
+    // scaler kommt ungeprüft aus dem Telegramm. Ein extremer scaler ergibt eine
+    // riesige Zahl (positiv) oder Präzision (negativ); das frühere dtostrf() ist
+    // NICHT längenbegrenzt und lief dann über vb[] hinaus -> Stack-Overflow /
+    // __stack_chk_fail-Panic (loopTask). snprintf() ist hart längenbegrenzt und
+    // kann per Definition nicht überlaufen; Präzision zusätzlich gekappt (Zähler
+    // nutzen ≤3–4 Nachkommastellen).
+    int prec = (scaler < 0) ? (int)-scaler : 0;
+    if (prec > 6) prec = 6;
+    char vb[40]; snprintf(vb, sizeof vb, "%.*f", prec, v);
     stromCode[stromCount]    = code;
     stromValStr[stromCount]  = String(vb);
     stromUnitStr[stromCount] = dlmsUnit(unitCode);
@@ -121,7 +142,13 @@ void smlProcess(const uint8_t* buf, int len) {
   bool any = false;
   if (!isnan(b)) { stromBezugWh   = b; any = true; }
   if (!isnan(e)) { stromEinspWh   = e; any = true; }
-  if (!isnan(w)) { stromLeistungW = w; any = true; }
+  // Momentan-Leistung gegen die (Web-einstellbare) Plausi-Grenze prüfen: absurde
+  // Ausreißer (z.B. der 1-MW-Peak aus einem Glitch-Telegramm) NICHT übernehmen,
+  // sondern den letzten guten Wert behalten. stromMaxW == 0 -> Prüfung aus.
+  if (!isnan(w)) {
+    if (stromMaxW == 0 || fabs(w) <= (double)stromMaxW) { stromLeistungW = w; any = true; }
+    else stromImplaus++;
+  }
 
   smlScanAll(buf, len);                       // komplette Werteliste
 
@@ -131,16 +158,28 @@ void smlProcess(const uint8_t* buf, int len) {
 void smlPoll() {
   while (Sml.available()) {
     uint8_t b = (uint8_t)Sml.read();
-    if (smlLen < SML_BUF) smlBuf[smlLen++] = b; else smlLen = 0;
+    if (smlLen < SML_BUF) smlBuf[smlLen++] = b; else { smlLen = 0; smlEndPos = 0; continue; }
+
+    // Start-Escape 1B1B1B1B 01010101 -> Puffer auf diese 8 Startbytes zurücksetzen.
     if (smlLen >= 8 &&
         memcmp(&smlBuf[smlLen - 8], "\x1B\x1B\x1B\x1B\x01\x01\x01\x01", 8) == 0) {
       memmove(smlBuf, &smlBuf[smlLen - 8], 8);
-      smlLen = 8;
+      smlLen = 8; smlEndPos = 0;
+      continue;
     }
-    if (smlLen >= 5 &&
+    // End-Escape 1B1B1B1B 1A gesehen -> danach folgen noch NN (Füllbyte-Anzahl) + CRC16
+    // (2 Bytes). Position hinter dem '1A' merken und auf diese 3 Bytes warten.
+    if (smlEndPos == 0 && smlLen >= 5 &&
         memcmp(&smlBuf[smlLen - 5], "\x1B\x1B\x1B\x1B\x1A", 5) == 0) {
-      smlProcess(smlBuf, smlLen - 5);
-      smlLen = 0;
+      smlEndPos = smlLen;
+    }
+    // Rahmen vollständig (End-Escape + NN + 2 CRC-Bytes) -> CRC über [Start .. NN] prüfen.
+    if (smlEndPos > 0 && smlLen >= smlEndPos + 3) {
+      uint16_t crcCalc = smlCrc16(smlBuf, smlEndPos + 1);   // inkl. Füllbyte-Anzahl NN
+      uint16_t crcRecv = ((uint16_t)smlBuf[smlEndPos + 1] << 8) | smlBuf[smlEndPos + 2];
+      if (crcCalc == crcRecv) { stromCrcOk++;  smlProcess(smlBuf, smlEndPos - 5); }
+      else                    { stromCrcErr++; }
+      smlLen = 0; smlEndPos = 0;
     }
   }
   if (stromValid && millis() - stromLastOk > STROM_STALE_MS) stromStatus = "stale";

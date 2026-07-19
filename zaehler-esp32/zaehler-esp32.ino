@@ -44,6 +44,7 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <esp_system.h>   // esp_reset_reason() für /api reset_reason
+#include <esp_core_dump.h> // esp_core_dump_get_summary() für /api lastcrash
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -65,6 +66,8 @@ void setup() {
   delay(200);
   Serial.println("\nESP32 Zähler-Reader startet...");
 
+  captureLastCrash();                // Core-Dump-Summary (falls Panic) einmalig cachen
+
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
   loadWifiCreds();                   // WLAN-Zugangsdaten (leer -> Setup-Portal)
@@ -79,6 +82,8 @@ void setup() {
   stromMqttS    = prefs.getUShort("strom_s", STROM_MQTT_DEF_S);
   if (stromMqttS < STROM_MQTT_MIN_S) stromMqttS = STROM_MQTT_MIN_S;
   if (stromMqttS > STROM_MQTT_MAX_S) stromMqttS = STROM_MQTT_MAX_S;
+  stromMaxW     = prefs.getUInt("strom_maxw", STROM_MAXW_DEF);
+  if (stromMaxW > STROM_MAXW_MAX) stromMaxW = STROM_MAXW_MAX;
   sendledEnabled = prefs.getUChar("sled_en", SENDLED_EN_DEF) != 0;
   sendledPin     = prefs.getUChar("sled_pin", SENDLED_PIN_DEF);
   sendledLevel   = prefs.getUChar("sled_lvl", SENDLED_LEVEL_DEF) != 0;

@@ -31,6 +31,41 @@ const char* resetReasonStr() {
   }
 }
 
+// Beim Boot EINMAL die Core-Dump-Summary aus der `coredump`-Partition lesen und als
+// JSON in lastCrashJson cachen (Aufruf in setup()). Der Arduino-Build hat Core-Dump-
+// to-Flash im ELF-Format aktiv -> bei jedem Panic liegt eine Summary im Flash; sie
+// bleibt bis zum nächsten Crash stehen (überlebt auch normale Reboots). Kein Dump
+// -> {"present":false}. Die Adressen (pc, bt[]) offline dekodieren:
+//   xtensa-esp32-elf-addr2line -pfiaC -e firmware.elf <pc> <bt…>
+// Nur bei ELF-Coredump verfügbar; sonst bleibt der Default-JSON stehen.
+void captureLastCrash() {
+#if defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
+  esp_core_dump_summary_t* s = (esp_core_dump_summary_t*)malloc(sizeof(esp_core_dump_summary_t));
+  if (!s) return;
+  if (esp_core_dump_get_summary(s) == ESP_OK) {
+    char task[17]; memcpy(task, s->exc_task, 16); task[16] = '\0';
+    size_t shaLen = sizeof(s->app_elf_sha256); if (shaLen > 16) shaLen = 16;
+    char sha[17]; memcpy(sha, s->app_elf_sha256, shaLen); sha[shaLen] = '\0';
+    String j = "{\"present\":true";
+    j += ",\"task\":\"" + jsonEscape(task) + "\"";
+    j += ",\"pc\":\"0x" + String(s->exc_pc, HEX) + "\"";
+    j += ",\"cause\":" + String(s->ex_info.exc_cause);
+    j += ",\"vaddr\":\"0x" + String(s->ex_info.exc_vaddr, HEX) + "\"";
+    j += ",\"corrupted\":" + String(s->exc_bt_info.corrupted ? "true" : "false");
+    j += ",\"depth\":" + String(s->exc_bt_info.depth);
+    j += ",\"bt\":[";
+    uint32_t n = s->exc_bt_info.depth; if (n > 16) n = 16;
+    for (uint32_t i = 0; i < n; i++) {
+      if (i) j += ",";
+      j += "\"0x" + String(s->exc_bt_info.bt[i], HEX) + "\"";
+    }
+    j += "],\"elf_sha\":\"" + jsonEscape(sha) + "\"}";
+    lastCrashJson = j;
+  }
+  free(s);
+#endif
+}
+
 void handleApi(AsyncWebServerRequest* req) {
   // Sekunden bis zur nächsten Wärme-Abfrage + nächste Uhrzeit als HH:MM.
   unsigned long nextS = 0;
@@ -65,12 +100,17 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"fw_ver\":\"" + jsonEscape(FW_VERSION) + "\"";
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
   j += ",\"reset_reason\":\"" + String(resetReasonStr()) + "\"";
+  j += ",\"lastcrash\":" + lastCrashJson;
 
   // Strom
   j += ",\"strom\":{";
   j += "\"enabled\":" + String(stromEnabled ? "true" : "false");
   j += ",\"gpio\":" + String(stromRxPin);
   j += ",\"send_s\":" + String(stromMqttS);
+  j += ",\"maxw\":" + String(stromMaxW);
+  j += ",\"crc_ok\":" + String(stromCrcOk);
+  j += ",\"crc_err\":" + String(stromCrcErr);
+  j += ",\"implausible\":" + String(stromImplaus);
   j += ",\"status\":\"" + jsonEscape(stromStatus) + "\"";
   if (!isnan(stromBezugWh))   j += ",\"bezug_kwh\":" + String(stromBezugWh / 1000.0, 3);
   if (!isnan(stromEinspWh))   j += ",\"einspeisung_kwh\":" + String(stromEinspWh / 1000.0, 3);
@@ -180,6 +220,13 @@ void handleSetStrom(AsyncWebServerRequest* req) {
     stromMqttS = (uint16_t)s;
     prefs.putUShort("strom_s", stromMqttS);
     pubStromCfg = true;                          // MQTT-Publish in loop() (thread-safe)
+  }
+  if (reqHas(req, "maxw")) {                      // Plausi-Grenze Leistung (W); 0 = aus
+    long m = reqArg(req, "maxw").toInt();
+    if (m < 0) m = 0;
+    if (m > STROM_MAXW_MAX) m = STROM_MAXW_MAX;
+    stromMaxW = (uint32_t)m;
+    prefs.putUInt("strom_maxw", stromMaxW);
   }
   if (changed) applyStromPending = true;         // UART-Re-Init in loop() (thread-safe)
   req->send(200, "text/plain", "ok");

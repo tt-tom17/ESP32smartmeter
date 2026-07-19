@@ -38,6 +38,12 @@ volatile bool scanReq           = false;  // WLAN-Scan im Portal starten
 String        pendingSsid, pendingPass;   // vom Web-Handler befüllt, loop() speichert
 unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
 
+// ─── Crash-Diagnose ───────────────────────────────────────────────────────────
+// Beim Boot einmalig aus der coredump-Partition gelesene Panic-Summary als JSON
+// (captureLastCrash() in setup()). Statisch bis zum nächsten Crash -> kein Flash-
+// Read pro /api-Poll. "{\"present\":false}" = kein (gültiger) Dump vorhanden.
+String lastCrashJson = "{\"present\":false}";
+
 // kleine Helfer für GET-Query-Argumente eines Async-Requests
 static bool   reqHas(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n); }
 static String reqArg(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n) ? r->getParam(n)->value() : String(); }
@@ -130,6 +136,12 @@ int      stromCount = 0;
 // ─── SML-Empfangspuffer ───────────────────────────────────────────────────────
 uint8_t  smlBuf[SML_BUF];
 int      smlLen = 0;
+int      smlEndPos = 0;             // Index hinter dem '1A' des End-Escapes (0 = keins gesehen)
+
+// ─── Strom-Plausibilität + SML-CRC-Diagnose ──────────────────────────────────
+uint32_t stromMaxW = STROM_MAXW_DEF;            // |Leistung|-Grenze in W (0 = Prüfung aus)
+unsigned long stromCrcOk = 0, stromCrcErr = 0;  // Telegramme: CRC gültig / verworfen
+unsigned long stromImplaus = 0;                 // Leistungswerte über der Plausi-Grenze verworfen
 
 unsigned long lastHeat = 0, lastStromMqtt = 0;
 long lastHeatSlot = -1;             // Epoch des zuletzt gelesenen Slots (kantengesteuert)
