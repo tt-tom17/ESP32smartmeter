@@ -101,7 +101,15 @@ void smlScanAll(const uint8_t* buf, int len) {
     if (dup) continue;
 
     double v = (double)value * pow(10.0, (double)scaler);
-    char vb[24]; dtostrf(v, 0, (scaler < 0 ? -scaler : 0), vb);
+    // scaler kommt ungeprüft aus dem Telegramm. Ein extremer scaler ergibt eine
+    // riesige Zahl (positiv) oder Präzision (negativ); das frühere dtostrf() ist
+    // NICHT längenbegrenzt und lief dann über vb[] hinaus -> Stack-Overflow /
+    // __stack_chk_fail-Panic (loopTask). snprintf() ist hart längenbegrenzt und
+    // kann per Definition nicht überlaufen; Präzision zusätzlich gekappt (Zähler
+    // nutzen ≤3–4 Nachkommastellen).
+    int prec = (scaler < 0) ? (int)-scaler : 0;
+    if (prec > 6) prec = 6;
+    char vb[40]; snprintf(vb, sizeof vb, "%.*f", prec, v);
     stromCode[stromCount]    = code;
     stromValStr[stromCount]  = String(vb);
     stromUnitStr[stromCount] = dlmsUnit(unitCode);
