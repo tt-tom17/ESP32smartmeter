@@ -11,6 +11,26 @@ String jsonEscape(const String& s) {
   String o; for (char c : s) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o;
 }
 
+// Grund des letzten Resets (esp_reset_reason() ist über die gesamte Laufzeit
+// stabil abrufbar) — als Klartext fürs /api, zur Reboot-Diagnose.
+//   brownout/poweron -> Stromversorgung (W5500/5-V-Netzteil-Kandidat)
+//   panic/*_wdt      -> Firmware-Crash/Hänger (Ethernet hilft nicht)
+//   sw               -> gewollter Reboot (OTA)
+const char* resetReasonStr() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "poweron";
+    case ESP_RST_EXT:       return "ext";
+    case ESP_RST_SW:        return "sw";
+    case ESP_RST_PANIC:     return "panic";
+    case ESP_RST_INT_WDT:   return "int_wdt";
+    case ESP_RST_TASK_WDT:  return "task_wdt";
+    case ESP_RST_WDT:       return "wdt";
+    case ESP_RST_BROWNOUT:  return "brownout";
+    case ESP_RST_DEEPSLEEP: return "deepsleep";
+    default:                return "unknown";
+  }
+}
+
 void handleApi(AsyncWebServerRequest* req) {
   // Sekunden bis zur nächsten Wärme-Abfrage + nächste Uhrzeit als HH:MM.
   unsigned long nextS = 0;
@@ -44,6 +64,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"mqtt_haspw\":" + String(mqttPass.length() ? "true" : "false");
   j += ",\"fw_ver\":\"" + jsonEscape(FW_VERSION) + "\"";
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
+  j += ",\"reset_reason\":\"" + String(resetReasonStr()) + "\"";
 
   // Strom
   j += ",\"strom\":{";

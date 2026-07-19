@@ -43,6 +43,7 @@
 #include <ArduinoOTA.h>
 #include <Update.h>
 #include <Preferences.h>
+#include <esp_system.h>   // esp_reset_reason() für /api reset_reason
 #include <math.h>
 #include <string.h>
 #include <time.h>
