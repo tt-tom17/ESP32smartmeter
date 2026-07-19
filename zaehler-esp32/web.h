@@ -107,6 +107,10 @@ void handleApi(AsyncWebServerRequest* req) {
   j += "\"enabled\":" + String(stromEnabled ? "true" : "false");
   j += ",\"gpio\":" + String(stromRxPin);
   j += ",\"send_s\":" + String(stromMqttS);
+  j += ",\"maxw\":" + String(stromMaxW);
+  j += ",\"crc_ok\":" + String(stromCrcOk);
+  j += ",\"crc_err\":" + String(stromCrcErr);
+  j += ",\"implausible\":" + String(stromImplaus);
   j += ",\"status\":\"" + jsonEscape(stromStatus) + "\"";
   if (!isnan(stromBezugWh))   j += ",\"bezug_kwh\":" + String(stromBezugWh / 1000.0, 3);
   if (!isnan(stromEinspWh))   j += ",\"einspeisung_kwh\":" + String(stromEinspWh / 1000.0, 3);
@@ -216,6 +220,13 @@ void handleSetStrom(AsyncWebServerRequest* req) {
     stromMqttS = (uint16_t)s;
     prefs.putUShort("strom_s", stromMqttS);
     pubStromCfg = true;                          // MQTT-Publish in loop() (thread-safe)
+  }
+  if (reqHas(req, "maxw")) {                      // Plausi-Grenze Leistung (W); 0 = aus
+    long m = reqArg(req, "maxw").toInt();
+    if (m < 0) m = 0;
+    if (m > STROM_MAXW_MAX) m = STROM_MAXW_MAX;
+    stromMaxW = (uint32_t)m;
+    prefs.putUInt("strom_maxw", stromMaxW);
   }
   if (changed) applyStromPending = true;         // UART-Re-Init in loop() (thread-safe)
   req->send(200, "text/plain", "ok");

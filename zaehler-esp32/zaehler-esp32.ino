@@ -82,6 +82,8 @@ void setup() {
   stromMqttS    = prefs.getUShort("strom_s", STROM_MQTT_DEF_S);
   if (stromMqttS < STROM_MQTT_MIN_S) stromMqttS = STROM_MQTT_MIN_S;
   if (stromMqttS > STROM_MQTT_MAX_S) stromMqttS = STROM_MQTT_MAX_S;
+  stromMaxW     = prefs.getUInt("strom_maxw", STROM_MAXW_DEF);
+  if (stromMaxW > STROM_MAXW_MAX) stromMaxW = STROM_MAXW_MAX;
   sendledEnabled = prefs.getUChar("sled_en", SENDLED_EN_DEF) != 0;
   sendledPin     = prefs.getUChar("sled_pin", SENDLED_PIN_DEF);
   sendledLevel   = prefs.getUChar("sled_lvl", SENDLED_LEVEL_DEF) != 0;

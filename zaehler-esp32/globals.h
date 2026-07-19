@@ -136,6 +136,12 @@ int      stromCount = 0;
 // ─── SML-Empfangspuffer ───────────────────────────────────────────────────────
 uint8_t  smlBuf[SML_BUF];
 int      smlLen = 0;
+int      smlEndPos = 0;             // Index hinter dem '1A' des End-Escapes (0 = keins gesehen)
+
+// ─── Strom-Plausibilität + SML-CRC-Diagnose ──────────────────────────────────
+uint32_t stromMaxW = STROM_MAXW_DEF;            // |Leistung|-Grenze in W (0 = Prüfung aus)
+unsigned long stromCrcOk = 0, stromCrcErr = 0;  // Telegramme: CRC gültig / verworfen
+unsigned long stromImplaus = 0;                 // Leistungswerte über der Plausi-Grenze verworfen
 
 unsigned long lastHeat = 0, lastStromMqtt = 0;
 long lastHeatSlot = -1;             // Epoch des zuletzt gelesenen Slots (kantengesteuert)

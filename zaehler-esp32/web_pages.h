@@ -133,6 +133,7 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <div class=row><span>Auslesen</span><button id=sen onclick=sToggle()>–</button></div>
  <div class=row><span>Lesekopf-GPIO</span><select id=sgpio></select></div>
  <div class=row><span>Sendeintervall (MQTT)</span><span><input type=number id=ssi min=2 max=300> s</span></div>
+ <div class=row><span>Max. Leistung (Plausi)</span><span><input type=number id=smaxw min=0 max=100000> W</span></div>
  <div class=row><span>Sende-Diode</span><button id=slen onclick=slToggle()>–</button></div>
  <div class=row><span>Sende-Diode GPIO</span><select id=slgpio></select></div>
  <div class=row><span>Sende-Diode Pegel</span><select id=sllvl><option value=1>HIGH (dunkel)</option><option value=0>LOW</option></select></div>
@@ -176,7 +177,7 @@ let sEnabled=true,hEnabled=true;
 function sToggle(){fetch('/setstrom?en='+(sEnabled?0:1)).then(()=>setTimeout(tick,200));}
 let slEnabled=true;
 function slToggle(){fetch('/setsendled?en='+(slEnabled?0:1)).then(()=>setTimeout(tick,200));}
-function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value);fetch('/setsendled?gpio='+slgpio.value+'&lvl='+sllvl.value).then(()=>{smsg.textContent='gespeichert';});}
+function sSave(){fetch('/setstrom?rx='+sgpio.value+'&s='+ssi.value+'&maxw='+smaxw.value);fetch('/setsendled?gpio='+slgpio.value+'&lvl='+sllvl.value).then(()=>{smsg.textContent='gespeichert';});}
 function hToggle(){fetch('/setheat?en='+(hEnabled?0:1)).then(()=>setTimeout(tick,200));}
 let mEnabled=false;
 function mToggle(){fetch('/setmqtt?en='+(mEnabled?0:1)).then(()=>setTimeout(tick,200));}
@@ -202,7 +203,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
  mpw.placeholder=d.mqtt_haspw?'•••• gesetzt (leer=unverändert)':'leer = unverändert';
  // Eingabefelder nur beim ERSTEN erfolgreichen Poll füllen (danach gehört das Feld dem User):
  if(!inited){inited=true;
-  sgpio.value=s.gpio;ssi.value=s.send_s;
+  sgpio.value=s.gpio;ssi.value=s.send_s;smaxw.value=s.maxw;
   if(d.sendled){slgpio.value=d.sendled.gpio;sllvl.value=d.sendled.level;}
   hih.value=w.interval_h;hstart.value=w.start_hhmm;htx.value=w.tx;hrx.value=w.rx;
   mroot.value=d.mqtt_root||'';mhost.value=d.mqtt_host||'';mport.value=d.mqtt_port||1883;muser.value=d.mqtt_user||'';

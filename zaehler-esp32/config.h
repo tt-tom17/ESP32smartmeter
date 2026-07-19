@@ -39,7 +39,7 @@ static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.3.3"
+#define FW_VERSION  "1.4.0"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Zeit / NTP ───────────────────────────────────────────────────────────────
@@ -90,6 +90,13 @@ static const char* HEAT_REQ_NAMES[2] = { "/?!", "/#!" };
 #define STROM_MQTT_MAX_S  300
 #define STROM_MQTT_DEF_S  10
 static const unsigned long STROM_STALE_MS = 30000;  // ohne Telegramm -> "stale"
+// Plausibilitäts-Obergrenze für die Momentan-Leistung (16.7.0) — Web-einstellbar (NVS).
+// |Leistung| über dieser Grenze gilt als Telegramm-Ausreißer und wird verworfen (schützt
+// DB/MQTT vor Werten wie dem 1-MW-Peak). 0 = Prüfung aus. Default 15 kW: ~2,3× des
+// real gemessenen Haushalts-Peaks (6,57 kW, DB currentpowerhome 14 d; nie >8 kW),
+// unter dem Hausanschluss-Limit (3×35 A ≈ 24 kW), weit unter Müllwerten.
+#define STROM_MAXW_DEF  15000   // W
+#define STROM_MAXW_MAX  100000  // Obergrenze der Einstellung (W)
 
 // ─── Puffergrößen ─────────────────────────────────────────────────────────────
 #define TELEGRAM_BUF 2600
