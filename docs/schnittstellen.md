@@ -42,7 +42,9 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
   `192.168.178.217`). Werte werden im NVS gespeichert und überstehen einen Reboot.
 
 **Endpunkte:**
-- `GET /api` — kompletter Zustand als JSON (Strom, Wärme, WLAN, MQTT-Status, Zeitplan)
+- `GET /api` — kompletter Zustand als JSON (Strom, Wärme, WLAN, MQTT-Status, Zeitplan);
+  enthält u. a. `uptime_s`, `fw_ver`/`fw_build` und `reset_reason` (Grund des letzten
+  Neustarts — zur Diagnose von Selbst-Reboots, siehe [troubleshooting.md](troubleshooting.md))
 - `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
   Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
 - `GET /setstrom?en=0|1&rx=G&s=Sek` — Strom: an/aus, RX-GPIO, Sendeintervall
