@@ -16,6 +16,30 @@
   `SML_INVERT` in `config.h` testen. Prüfen, ob `strom.status` im `/api`-JSON auf `ok`
   springt.
 
+## Unerwartete Neustarts einordnen (`reset_reason`)
+Bootet der ESP von selbst neu (Uptime springt zurück, MQTT-Lücke), sagt das Feld
+`reset_reason` im `/api`-JSON, **woran** es lag — ohne Serial- oder Log-Zugang.
+Der Wert stammt aus `esp_reset_reason()` und bleibt über die ganze Laufzeit stabil,
+beschreibt also immer den **letzten** Reset.
+
+```bash
+curl "http://<IP>/api" | jq .reset_reason
+```
+
+| Wert | Bedeutung | Richtung |
+| --- | --- | --- |
+| `brownout` | Versorgungsspannung eingebrochen | **Stromversorgung** — stabiles 5-V-Netzteil |
+| `poweron` | echtes Ein-/Ausschalten (Stromausfall) | Steckkontakt / Netzteil prüfen |
+| `panic` | Firmware-Absturz (Exception) | **Firmware-Bug** |
+| `int_wdt` / `task_wdt` / `wdt` | Watchdog: `loop()`/Task hing zu lange | Firmware-Bug / Blockade |
+| `sw` | gewollter Software-Reboot (u. a. nach OTA-Flash) | kein Problem |
+| `ext` | Reset-Pin / externer Reset | Verdrahtung / EN-Pin |
+| `deepsleep` | Aufwachen aus Deep-Sleep | (hier nicht genutzt) |
+| `unknown` | Grund nicht ermittelbar | — |
+
+Kurz: `brownout`/`poweron` deuten auf die **Stromseite**, `panic`/`*_wdt` auf die
+**Firmware**. Direkt nach einem OTA-Flash steht hier korrekt `sw`.
+
 ## Bekannte Grenzen
 - SML-CRC wird nicht geprüft (Resync über Escape-Sequenzen).
 - Generischer SML-Scan: nur Strom-Register (OBIS-Medium 1) mit Integer-Wert;
