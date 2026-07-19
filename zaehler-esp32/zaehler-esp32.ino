@@ -44,6 +44,7 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <esp_system.h>   // esp_reset_reason() für /api reset_reason
+#include <esp_core_dump.h> // esp_core_dump_get_summary() für /api lastcrash
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -64,6 +65,8 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\nESP32 Zähler-Reader startet...");
+
+  captureLastCrash();                // Core-Dump-Summary (falls Panic) einmalig cachen
 
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);

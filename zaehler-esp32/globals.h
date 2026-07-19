@@ -38,6 +38,12 @@ volatile bool scanReq           = false;  // WLAN-Scan im Portal starten
 String        pendingSsid, pendingPass;   // vom Web-Handler befüllt, loop() speichert
 unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
 
+// ─── Crash-Diagnose ───────────────────────────────────────────────────────────
+// Beim Boot einmalig aus der coredump-Partition gelesene Panic-Summary als JSON
+// (captureLastCrash() in setup()). Statisch bis zum nächsten Crash -> kein Flash-
+// Read pro /api-Poll. "{\"present\":false}" = kein (gültiger) Dump vorhanden.
+String lastCrashJson = "{\"present\":false}";
+
 // kleine Helfer für GET-Query-Argumente eines Async-Requests
 static bool   reqHas(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n); }
 static String reqArg(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n) ? r->getParam(n)->value() : String(); }
