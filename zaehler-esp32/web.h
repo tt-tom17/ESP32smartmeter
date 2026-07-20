@@ -100,6 +100,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"fw_ver\":\"" + jsonEscape(FW_VERSION) + "\"";
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
   j += ",\"reset_reason\":\"" + String(resetReasonStr()) + "\"";
+  j += ",\"reboot_by\":\"" + jsonEscape(rebootBy) + "\"";   // "net-watchdog" nach Selbstheilung, sonst "none"
   j += ",\"lastcrash\":" + lastCrashJson;
 
   // Strom

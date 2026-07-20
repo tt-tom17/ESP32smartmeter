@@ -141,6 +141,7 @@ void readHeat() {
   char ident[80]; int idn = 0;
   unsigned long dl = millis() + 2000;
   while (millis() < dl && idn < 79) {
+    esp_task_wdt_reset();                 // Lese-Warteschleife (bis ~2 s): TWDT füttern
     if (Heat.available()) {
       char c = (char)Heat.read();
       dl = millis() + 400;
@@ -178,6 +179,7 @@ void readHeat() {
   int len = 0;
   unsigned long deadline = millis() + HEAT_FIRST_BYTE_MS;
   while (millis() < deadline && len < TELEGRAM_BUF - 1) {
+    esp_task_wdt_reset();                 // Datenblock-Warteschleife (bis ~5-6 s): TWDT füttern
     if (Heat.available()) {
       char c = (char)Heat.read();
       deadline = millis() + HEAT_IDLE_MS;

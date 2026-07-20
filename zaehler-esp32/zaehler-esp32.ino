@@ -45,6 +45,7 @@
 #include <Preferences.h>
 #include <esp_system.h>   // esp_reset_reason() für /api reset_reason
 #include <esp_core_dump.h> // esp_core_dump_get_summary() für /api lastcrash
+#include <esp_task_wdt.h>  // Task-Watchdog (loop()-Blockade -> Reboot)
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -67,6 +68,7 @@ void setup() {
   Serial.println("\nESP32 Zähler-Reader startet...");
 
   captureLastCrash();                // Core-Dump-Summary (falls Panic) einmalig cachen
+  captureRebootReason();             // Grund eines Selbst-Reboots (net-watchdog) aus RTC-RAM
 
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
@@ -109,18 +111,31 @@ void setup() {
   mqtt.setServer(mqttServer.c_str(), mqttPort);
   mqtt.setBufferSize(512);
   mqtt.setKeepAlive(60);
+  mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_S);   // Connect/Read hart begrenzen (s.o.)
 
   ArduinoOTA.setHostname(HOSTNAME);
-  ArduinoOTA.onStart([]() { otaActive = true;  Serial.println("[OTA] Update startet - Messung pausiert."); });
-  ArduinoOTA.onError([](ota_error_t e) { otaActive = false; });
+  // Während eines ArduinoOTA-Uploads (blockiert loopTask) den TWDT abmelden, sonst
+  // würde ein längerer Flash-Vorgang einen Fehl-Reboot auslösen. Bei Erfolg rebootet
+  // ArduinoOTA selbst; bei Fehler wieder anmelden. (Web-OTA läuft im Web-Task -> loop()
+  // füttert weiter, dort ist kein Abmelden nötig.)
+  ArduinoOTA.onStart([]() { otaActive = true; esp_task_wdt_delete(NULL); Serial.println("[OTA] Update startet - Messung pausiert."); });
+  ArduinoOTA.onError([](ota_error_t e) { otaActive = false; esp_task_wdt_add(NULL); });
   ArduinoOTA.begin();
 
   setupWeb();                        // Routen registrieren + Server starten
+
+  // Task-Watchdog von den vom Core voreingestellten 5 s auf TASK_WDT_TIMEOUT_S umstellen
+  // und die laufende Task (loopTask) überwachen. Feuert einen Reboot (reset_reason=
+  // task_wdt), wenn loop() länger als das Timeout nicht zurückkehrt.
+  esp_task_wdt_init(TASK_WDT_TIMEOUT_S, true);   // true = Panic/Reboot bei Timeout
+  esp_task_wdt_add(NULL);                         // loopTask überwachen
 
   Serial.println("Setup fertig.");
 }
 
 void loop() {
+  esp_task_wdt_reset();              // Task-Watchdog füttern: loop() läuft (auch die
+                                     // Early-Returns unten durchlaufen diese Zeile)
   if (restartAt && millis() >= restartAt) { restartAt = 0; ESP.restart(); }
   ArduinoOTA.handle();
   if (otaActive) return;
@@ -137,6 +152,19 @@ void loop() {
     // Gerät (keine Creds) bleibt zum Einrichten dauerhaft im Portal.
     if (!wifiSsid.isEmpty() && millis() - apStartedAt > AP_PORTAL_TIMEOUT_MS) restartAt = millis();
     return;
+  }
+
+  // Verbindungs-Watchdog (STA-Betrieb): WLAN nach dem ersten Connect zu lange weg ->
+  // Neustart, weil ensureWifi() den verklemmten Treiber sonst endlos ergebnislos
+  // neu anstößt (= der beobachtete stumme Ausfall ohne Reboot). Erst scharf, sobald
+  // wir überhaupt einmal verbunden waren (lastWifiOk != 0).
+  if (WiFi.status() == WL_CONNECTED) {
+    lastWifiOk = millis();
+  } else if (lastWifiOk != 0 && millis() - lastWifiOk > NET_WATCHDOG_MS) {
+    Serial.println("[NET-WDT] WLAN zu lange weg -> Neustart zur Selbstheilung");
+    markReboot(REBOOT_BY_NETWDT);    // Grund über den Reboot hinweg fürs /api merken
+    delay(50); Serial.flush();
+    ESP.restart();
   }
 
   ensureMqtt();
