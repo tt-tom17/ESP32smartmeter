@@ -127,7 +127,14 @@ void setup() {
   // Task-Watchdog von den vom Core voreingestellten 5 s auf TASK_WDT_TIMEOUT_S umstellen
   // und die laufende Task (loopTask) überwachen. Feuert einen Reboot (reset_reason=
   // task_wdt), wenn loop() länger als das Timeout nicht zurückkehrt.
-  esp_task_wdt_init(TASK_WDT_TIMEOUT_S, true);   // true = Panic/Reboot bei Timeout
+  // IDF5 (Arduino-Core 3.x): der TWDT ist beim Boot schon initialisiert -> init() gibt
+  // dann ESP_ERR_INVALID_STATE zurück und ändert nichts; in dem Fall reconfigure().
+  esp_task_wdt_config_t twdtCfg = {
+    .timeout_ms     = (uint32_t)TASK_WDT_TIMEOUT_S * 1000,
+    .idle_core_mask = 0,          // Idle-Tasks nicht überwachen; wir überwachen loopTask explizit
+    .trigger_panic  = true,       // Timeout -> Panic/Reboot (reset_reason=task_wdt)
+  };
+  if (esp_task_wdt_init(&twdtCfg) == ESP_ERR_INVALID_STATE) esp_task_wdt_reconfigure(&twdtCfg);
   esp_task_wdt_add(NULL);                         // loopTask überwachen
 
   Serial.println("Setup fertig.");
