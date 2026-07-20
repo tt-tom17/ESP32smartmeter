@@ -13,11 +13,12 @@ und Build-Zeitstempel (zeigt, ob ein OTA-Flash wirklich angekommen ist).
 - **Wärme (`/waerme`)** — „Jetzt lesen", Status-/Identifikations-Details und
   **alle** UH50-Werte.
 - **Einstellungen (`/update`)** — sämtliche Konfiguration an einem Ort:
-  - **⚡ Strom:** Auslesen AN/AUS, Lesekopf-GPIO, **MQTT-Sendeintervall (2–300 s)**.
+  - **⚡ Strom:** Auslesen AN/AUS, Lesekopf-GPIO, **MQTT-Sendeintervall (2–300 s)**,
+    **Max. Leistung (Plausi) in W (0–100000, Default 15000, 0 = aus)**.
     Das Sendeintervall ist das Pendant zu Tasmotas `TelePeriod`; der SML-Zähler
     sendet selbst 1–2×/s, schneller als ~2 s bringt also keine neuen Werte.
   - **🔥 Wärme:** Auslesen AN/AUS, **Startuhrzeit** + **Intervall (nur Teiler von 24 h:
-    1/2/3/4/6/8/12/24)**, TX-/RX-GPIO. Abfragen laufen zu festen Wanduhrzeiten (NTP,
+    1/2/3/4/6/8/12/24)**, TX-/RX-GPIO. Abfragen laufen zu festen Uhrzeiten (NTP,
     sommer-/winterzeitfest); die Startseite zeigt die nächste Uhrzeit + Countdown.
   - **MQTT:** **An/Aus-Schalter (Default aus)**, Verbindungsstatus, **Haupttopic**,
     **Host/IP, Port, User, Passwort** (speichern → verbindet neu; leeres
@@ -44,10 +45,29 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
 **Endpunkte:**
 - `GET /api` — kompletter Zustand als JSON (Strom, Wärme, WLAN, MQTT-Status, Zeitplan);
   enthält u. a. `uptime_s`, `fw_ver`/`fw_build` und `reset_reason` (Grund des letzten
-  Neustarts — zur Diagnose von Selbst-Reboots, siehe [troubleshooting.md](troubleshooting.md))
+  Neustarts — zur Diagnose von Selbst-Reboots, siehe [troubleshooting.md](troubleshooting.md)).
+
+  Weiter enthalten:
+  - **`lastcrash`** — Zusammenfassung des letzten Core-Dumps mit `task`, `pc`, `cause`,
+    `vaddr`, `corrupted`, `depth`, `bt` und `elf_sha`. Liegt kein Dump vor:
+    `{"present":false}`. ⚠️ Der Eintrag wird beim Booten **nicht** automatisch gelöscht und
+    kann daher einen längst behobenen Absturz zeigen — immer gegen `reset_reason` und
+    `elf_sha` (Firmware-Stand) gegenlesen.
+  - unter **`strom`**: `maxw` (Plausibilitätsgrenze, s. `/setstrom`), `crc_ok` / `crc_err`
+    (geprüfte bzw. verworfene SML-Telegramme, seit Boot) und `implausible` (wegen `maxw`
+    verworfene Leistungswerte).
 - `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
   Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
-- `GET /setstrom?en=0|1&rx=G&s=Sek` — Strom: an/aus, RX-GPIO, Sendeintervall
+- `GET /setstrom?en=0|1&rx=G&s=Sek&maxw=W` — Strom: an/aus, RX-GPIO, Sendeintervall,
+  **Plausibilitätsgrenze der Momentanleistung** (`maxw`, in W). Geprüft wird der **Betrag**,
+  die Grenze gilt also auch für Einspeisung. Default `15000`, `0` = Prüfung aus, Maximum
+  `100000` (größere Werte werden stillschweigend geklemmt). Überschreitende Messwerte werden
+  verworfen — der letzte gute Wert bleibt stehen, Zähler `strom.implausible` im `/api`-JSON.
+
+  ```bash
+  curl "http://<IP>/setstrom?maxw=15000"   # Grenze auf 15 kW setzen
+  curl "http://<IP>/setstrom?maxw=0"       # Plausibilitätsprüfung abschalten
+  ```
 - `GET /setsendled?en=0|1&gpio=G&lvl=0|1` — Sende-Diode des SML-Lesekopfs „parken":
   an/aus, GPIO, Pegel (`1`=HIGH, `0`=LOW; welcher Pegel die Diode dunkel hält, hängt vom
   Kopf ab). Verhindert, dass die Sende-IR-Diode in den eigenen Empfänger streut; Status
