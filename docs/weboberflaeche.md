@@ -58,12 +58,16 @@ Detailseite zum Wärmezähler (Landis+Gyr UH50/T550 über D0):
 Sämtliche Konfiguration an einem Ort. Änderungen werden im **NVS** gespeichert und
 überstehen einen Reboot. Jede Karte hat einen eigenen **Speichern**-Button.
 
-- **⚡ Strom** — Auslesen an/aus, Lesekopf-GPIO, MQTT-Sendeintervall (2–300 s) sowie
-  **Sende-Diode** des Lesekopfs: an/aus, GPIO und Pegel (HIGH (dunkel) / LOW). Hält die
-  Sende-IR-Diode dunkel, damit sie den eigenen Empfänger nicht blendet (siehe
-  [troubleshooting.md](troubleshooting.md)).
+- **⚡ Strom** — Auslesen an/aus, Lesekopf-GPIO, MQTT-Sendeintervall (2–300 s),
+  **Max. Leistung (Plausi)** sowie **Sende-Diode** des Lesekopfs: an/aus, GPIO und Pegel
+  (HIGH (dunkel) / LOW). Die Sende-Diode dunkel zu halten verhindert, dass sie den eigenen
+  Empfänger blendet (siehe [troubleshooting.md](troubleshooting.md)).
+  **Max. Leistung** ist eine Plausibilitätsgrenze in W (0–100000, Default 15000, `0` = aus),
+  die beim Speichern mitgeschickt wird. Geprüft wird der **Betrag**, sie greift also auch bei
+  Einspeisung; darüber liegende Messwerte werden verworfen (der letzte gute Wert bleibt
+  stehen) und in `strom.implausible` im `/api`-JSON gezählt.
 - **🔥 Wärme** — Auslesen an/aus, **Startuhrzeit**, **Intervall** (Dropdown, nur Teiler
-  von 24 h: 1/2/3/4/6/8/12/24), TX-/RX-GPIO. Die Abfragen laufen zu festen Wanduhrzeiten
+  von 24 h: 1/2/3/4/6/8/12/24), TX-/RX-GPIO. Die Abfragen laufen zu festen Uhrzeiten
   (NTP, sommer-/winterzeitfest).
 - **MQTT** — aktiv an/aus (**Default aus**), Status-Pill, Haupttopic, Host/IP, Port, User,
   Passwort. Speichern verbindet neu; leeres Passwortfeld lässt das gespeicherte PW
