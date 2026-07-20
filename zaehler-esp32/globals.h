@@ -35,6 +35,7 @@ volatile bool pubStromCfg       = false;  // send_s per MQTT publizieren
 volatile bool credSaveReq       = false;  // neue WLAN-Daten gesetzt -> speichern + reboot
 volatile bool wifiResetReq      = false;  // "WLAN vergessen" -> Creds löschen + reboot
 volatile bool scanReq           = false;  // WLAN-Scan im Portal starten
+volatile bool clearCrashReq     = false;  // /clearcrash -> Core-Dump löschen (Flash-Write in loop())
 String        pendingSsid, pendingPass;   // vom Web-Handler befüllt, loop() speichert
 unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
 

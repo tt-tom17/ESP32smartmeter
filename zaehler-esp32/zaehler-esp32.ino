@@ -177,6 +177,7 @@ void loop() {
   if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((heatPrefix()  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); publishHeatNext(); }
   if (pubStromCfg) { pubStromCfg = false; mqtt.publish((stromPrefix() + "send_s").c_str(),     String(stromMqttS).c_str(),    true); }
   if (reqRead)     { reqRead     = false; readHeat(); lastHeat = millis(); }
+  if (clearCrashReq) { clearCrashReq = false; clearLastCrash(); }
 
   if (stromEnabled) smlPoll();
 
