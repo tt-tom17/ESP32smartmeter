@@ -31,6 +31,19 @@ const char* resetReasonStr() {
   }
 }
 
+// Wurde der AKTUELLE Boot durch einen Crash (Panic/Watchdog) ausgelöst? Nur dann
+// stammt ein im Flash liegender Core-Dump aus DIESEM Boot. Bei jedem anderen Grund
+// (sw/poweron/brownout/…) ist ein vorhandener Dump von einem FRÜHEREN Absturz und
+// wurde nur nie gelöscht -> in /api als "stale":true markiert (sonst sieht ein alter
+// Backtrace nach einem Reflash fälschlich wie ein aktueller aus).
+bool bootFromCrash() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_PANIC: case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT: case ESP_RST_WDT: return true;
+    default: return false;
+  }
+}
+
 // Beim Boot EINMAL die Core-Dump-Summary aus der `coredump`-Partition lesen und als
 // JSON in lastCrashJson cachen (Aufruf in setup()). Der Arduino-Build hat Core-Dump-
 // to-Flash im ELF-Format aktiv -> bei jedem Panic liegt eine Summary im Flash; sie
@@ -47,6 +60,7 @@ void captureLastCrash() {
     size_t shaLen = sizeof(s->app_elf_sha256); if (shaLen > 16) shaLen = 16;
     char sha[17]; memcpy(sha, s->app_elf_sha256, shaLen); sha[shaLen] = '\0';
     String j = "{\"present\":true";
+    j += ",\"stale\":" + String(bootFromCrash() ? "false" : "true");   // gehört der Dump zum aktuellen Boot?
     j += ",\"task\":\"" + jsonEscape(task) + "\"";
     j += ",\"pc\":\"0x" + String(s->exc_pc, HEX) + "\"";
     j += ",\"cause\":" + String(s->ex_info.exc_cause);
@@ -64,6 +78,16 @@ void captureLastCrash() {
   }
   free(s);
 #endif
+}
+
+// Core-Dump aus dem Flash löschen und den /api-Cache zurücksetzen (Endpunkt /clearcrash).
+// Nur aus loop() aufrufen — Flash-Schreibzugriff; der Web-Handler setzt nur clearCrashReq.
+void clearLastCrash() {
+#if defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
+  esp_core_dump_image_erase();
+#endif
+  lastCrashJson = "{\"present\":false}";
+  Serial.println("[CRASH] Core-Dump gelöscht (/clearcrash)");
 }
 
 void handleApi(AsyncWebServerRequest* req) {
@@ -100,6 +124,7 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"fw_ver\":\"" + jsonEscape(FW_VERSION) + "\"";
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
   j += ",\"reset_reason\":\"" + String(resetReasonStr()) + "\"";
+  j += ",\"reboot_by\":\"" + jsonEscape(rebootBy) + "\"";   // "net-watchdog" nach Selbstheilung, sonst "none"
   j += ",\"lastcrash\":" + lastCrashJson;
 
   // Strom
@@ -364,6 +389,7 @@ void setupWeb() {
   server.on("/setsendled",HTTP_GET, handleSetSendLed);
   server.on("/setmqtt",   HTTP_GET, handleSetMqtt);
   server.on("/read",      HTTP_GET, [](AsyncWebServerRequest* r){ reqRead = true; r->send(200, "text/plain", "ok"); });
+  server.on("/clearcrash",HTTP_GET, [](AsyncWebServerRequest* r){ clearCrashReq = true; r->send(200, "text/plain", "ok"); });
   server.on("/toggle",    HTTP_GET, [](AsyncWebServerRequest* r){ reqIdx = 1 - reqIdx; r->send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });
   setupWebOta();
   setupProvisioning();                             // WLAN-Setup-Portal + Captive-Routen

@@ -34,12 +34,33 @@ static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000; // STA-Connect-Timeo
 // Ein FRISCHES Gerät (keine Creds) lässt das Portal dauerhaft offen.
 static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 
+// ─── Selbstheilung: Watchdogs (gegen stummes Hängen ohne Reboot) ──────────────
+// (A) Verbindungs-Watchdog: Ist das WLAN im laufenden STA-Betrieb länger als diese
+// Zeit DURCHGEHEND weg, holt ein bloßes WiFi.begin() den (oft verklemmten) WLAN-
+// Treiber nicht zurück -> gezielter Neustart als Selbstheilung (wie der apMode-
+// Timeout). Das verwandelt einen stummen Ausfall (>1 h beobachtet) in eine Lücke
+// von Sekunden. Grund wird über den Reboot als /api "reboot_by" sichtbar gemacht.
+static const unsigned long NET_WATCHDOG_MS = 300000UL;      // 5 min WLAN weg -> Reboot
+// (B) Task-Watchdog (TWDT): rebootet, wenn loop() länger als dies NICHT zurückkehrt
+// (echte Einzel-Blockade, z.B. hängendes Serial.flush()); reset_reason wird task_wdt.
+// Muss über der längsten legitimen loop()-Dauer liegen (WLAN-Connect-Busy-Wait 15 s
+// + Wärme-Lesezyklus ~6-10 s). Der Core initialisiert den TWDT beim Boot auf 5 s;
+// setup() konfiguriert ihn auf diesen Wert um. Zusätzlich füttern die bekannten
+// Langläufer (ensureWifi/readHeat) den TWDT intern, damit ein evtl. fehlschlagendes
+// Um-Init nicht zu Fehl-Reboots führt.
+static const uint8_t TASK_WDT_TIMEOUT_S = 30;
+// MQTT-Connect/Read hart begrenzen (PubSubClient-Default 15 s), damit ein Broker, der
+// TCP annimmt aber beim Handshake stockt, die loop() nicht lange blockiert. Bewusst < 5 s:
+// so bleibt loop() auch dann unter der Watchdog-Grenze, falls das TWDT-Um-Init auf 30 s
+// nicht greifen sollte (dann gilt der Core-Default 5 s). Für einen LAN-Broker reichlich.
+static const uint16_t MQTT_SOCKET_TIMEOUT_S = 4;
+
 // ─── Firmware-Version ─────────────────────────────────────────────────────────
 // FW_VERSION als SemVer-String "MAJOR.MINOR.PATCH" bei jedem neuen Build erhöhen.
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.4.0"
+#define FW_VERSION  "1.5.0"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Zeit / NTP ───────────────────────────────────────────────────────────────

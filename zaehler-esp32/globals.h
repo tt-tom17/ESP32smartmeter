@@ -35,6 +35,7 @@ volatile bool pubStromCfg       = false;  // send_s per MQTT publizieren
 volatile bool credSaveReq       = false;  // neue WLAN-Daten gesetzt -> speichern + reboot
 volatile bool wifiResetReq      = false;  // "WLAN vergessen" -> Creds löschen + reboot
 volatile bool scanReq           = false;  // WLAN-Scan im Portal starten
+volatile bool clearCrashReq     = false;  // /clearcrash -> Core-Dump löschen (Flash-Write in loop())
 String        pendingSsid, pendingPass;   // vom Web-Handler befüllt, loop() speichert
 unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (millis)
 
@@ -43,6 +44,30 @@ unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (mi
 // (captureLastCrash() in setup()). Statisch bis zum nächsten Crash -> kein Flash-
 // Read pro /api-Poll. "{\"present\":false}" = kein (gültiger) Dump vorhanden.
 String lastCrashJson = "{\"present\":false}";
+
+// ─── Selbstheilung: Verbindungs-Watchdog + Reboot-Grund ───────────────────────
+// millis() des letzten WL_CONNECTED (0 = seit dem Boot noch nie verbunden). loop()
+// rebootet, wenn das WLAN ab dem ersten Connect länger als NET_WATCHDOG_MS weg ist.
+unsigned long lastWifiOk = 0;
+// Grund eines SELBST ausgelösten Neustarts über den Reboot hinweg festhalten: RTC-RAM
+// übersteht ESP.restart()/Watchdog-Reset, NICHT aber Power-on/Brownout (dort zufälliger
+// Inhalt) -> per Magic auf Gültigkeit prüfen. /api zeigt das als "reboot_by".
+#define RTC_REBOOT_MAGIC 0xB007C0DEUL
+#define REBOOT_BY_NETWDT 1u
+RTC_NOINIT_ATTR uint32_t rtcRebootMagic;
+RTC_NOINIT_ATTR uint32_t rtcRebootCode;
+String rebootBy = "none";                    // in setup() aus dem RTC-RAM gelesen
+
+// Vor einem selbst ausgelösten Neustart den Grund im RTC-RAM hinterlegen.
+inline void markReboot(uint32_t code) { rtcRebootMagic = RTC_REBOOT_MAGIC; rtcRebootCode = code; }
+// Beim Boot den (ggf.) hinterlegten Grund lesen und das Magic invalidieren, damit er
+// nur GENAU diesen einen Boot lang gilt. Nach Power-on ist das Magic mit an Sicherheit
+// grenzender Wahrscheinlichkeit != RTC_REBOOT_MAGIC -> "none".
+inline void captureRebootReason() {
+  if (rtcRebootMagic == RTC_REBOOT_MAGIC)
+    rebootBy = (rtcRebootCode == REBOOT_BY_NETWDT) ? "net-watchdog" : "unknown";
+  rtcRebootMagic = 0;
+}
 
 // kleine Helfer für GET-Query-Argumente eines Async-Requests
 static bool   reqHas(AsyncWebServerRequest* r, const char* n) { return r->hasParam(n); }

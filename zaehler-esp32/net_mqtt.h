@@ -46,7 +46,8 @@ void ensureWifi() {
   WiFi.setSleep(false);            // WiFi-Stromsparen aus -> OTA/UDP zuverlässig
   WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
   unsigned long t = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) delay(250);
+  // Busy-Wait bis ~15 s: den Task-Watchdog dabei füttern (loopTask lebt, wartet nur).
+  while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_CONNECT_TIMEOUT_MS) { delay(250); esp_task_wdt_reset(); }
   if (WiFi.status() == WL_CONNECTED) {
     everConnected = true;
     Serial.print("WLAN ok, MAC: "); Serial.print(WiFi.macAddress());
