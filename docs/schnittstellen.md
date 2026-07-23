@@ -53,6 +53,11 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
     `{"present":false}`. ⚠️ Der Eintrag wird beim Booten **nicht** automatisch gelöscht und
     kann daher einen längst behobenen Absturz zeigen — immer gegen `reset_reason` und
     `elf_sha` (Firmware-Stand) gegenlesen.
+  - **`wdt_where`** (ab FW 1.6.0) — der `loop()`-Abschnitt, in dem der letzte Watchdog
+    bzw. Panic zuschlug: `ota`, `net`, `mqtt`, `apply`, `strom`, `publish`, `heat` oder
+    `idle`. Leer (`""`), wenn dieser Boot **kein** Crash-Boot war — nach einem OTA-Reboot
+    oder Power-on ist der Wert bedeutungslos und wird deshalb gar nicht erst gemeldet.
+    Ergänzt `lastcrash` dort, wo der Core-Dump `corrupted` und damit unbrauchbar ist.
   - unter **`strom`**: `maxw` (Plausibilitätsgrenze, s. `/setstrom`), `crc_ok` / `crc_err`
     (geprüfte bzw. verworfene SML-Telegramme, seit Boot) und `implausible` (wegen `maxw`
     verworfene Leistungswerte).
