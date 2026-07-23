@@ -83,6 +83,36 @@ RTC_NOINIT_ATTR uint32_t rtcRebootMagic;
 RTC_NOINIT_ATTR uint32_t rtcRebootCode;
 String rebootBy = "none";                    // in setup() aus dem RTC-RAM gelesen
 
+// ─── Wo hing loop(), als der Task-Watchdog zuschlug? ──────────────────────────
+// Anlass: Der TWDT-Griff am 21.07.2026 rebootete zwar sauber, ließ die URSACHE aber
+// offen — der Core-Dump war `corrupted` (1 Frame), und der aussagekräftige TWDT-Panic-
+// Text ("task did not reset the watchdog") landet nur flüchtig auf Serial. Deshalb
+// schreibt loop() den gerade laufenden Abschnitt fortlaufend ins RTC-RAM; das übersteht
+// den Watchdog-Reset. Nach einem Crash-Boot zeigt /api ihn als "wdt_where" — damit ist
+// beim nächsten Griff wenigstens der blockierende Abschnitt bekannt.
+// Kostet einen einzelnen 32-Bit-Write je Phasenwechsel (RTC-RAM, vernachlässigbar).
+#define RTC_PHASE_MAGIC 0x10075EE1UL
+RTC_NOINIT_ATTR uint32_t rtcPhaseMagic;
+RTC_NOINIT_ATTR uint32_t rtcPhase;
+enum LoopPhase : uint32_t { PH_IDLE = 0, PH_OTA, PH_NET, PH_MQTT, PH_APPLY, PH_STROM, PH_PUBLISH, PH_HEAT };
+static const char* PHASE_NAMES[] = { "idle", "ota", "net", "mqtt", "apply", "strom", "publish", "heat" };
+String wdtWhere = "";                        // nur nach einem Crash-Boot gefüllt
+
+inline void setPhase(uint32_t p) { rtcPhase = p; }   // Magic setzt setup() einmalig
+
+// Beim Boot auswerten: Der Wert ist NUR aussagekräftig, wenn dieser Boot aus einem
+// Panic/Watchdog kam — sonst (OTA-Reboot, Power-on) steht dort die zuletzt normal
+// durchlaufene Phase bzw. nach Power-on Zufall. Danach das Magic neu setzen, damit
+// die laufende Sitzung wieder mitschreibt.
+inline void captureLoopPhase() {
+  esp_reset_reason_t r = esp_reset_reason();
+  bool crash = (r == ESP_RST_PANIC || r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT);
+  if (crash && rtcPhaseMagic == RTC_PHASE_MAGIC && rtcPhase < (sizeof PHASE_NAMES / sizeof *PHASE_NAMES))
+    wdtWhere = PHASE_NAMES[rtcPhase];
+  rtcPhaseMagic = RTC_PHASE_MAGIC;
+  rtcPhase = PH_IDLE;
+}
+
 // Vor einem selbst ausgelösten Neustart den Grund im RTC-RAM hinterlegen.
 inline void markReboot(uint32_t code) { rtcRebootMagic = RTC_REBOOT_MAGIC; rtcRebootCode = code; }
 // Beim Boot den (ggf.) hinterlegten Grund lesen und das Magic invalidieren, damit er

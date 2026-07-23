@@ -73,6 +73,8 @@ void setup() {
 
   captureLastCrash();                // Core-Dump-Summary (falls Panic) einmalig cachen
   captureRebootReason();             // Grund eines Selbst-Reboots (net-watchdog) aus RTC-RAM
+  captureLoopPhase();                // in welchem loop()-Abschnitt hing es beim Watchdog-Reset?
+  if (wdtWhere.length()) Serial.printf("[WDT] letzter Reset traf loop()-Abschnitt '%s'\n", wdtWhere.c_str());
 
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
@@ -152,8 +154,10 @@ void loop() {
   esp_task_wdt_reset();              // Task-Watchdog füttern: loop() läuft (auch die
                                      // Early-Returns unten durchlaufen diese Zeile)
   if (restartAt && millis() >= restartAt) { restartAt = 0; ESP.restart(); }
+  setPhase(PH_OTA);                  // Phase mitschreiben -> nach einem WDT-Reset in /api "wdt_where"
   ArduinoOTA.handle();
   if (otaActive) return;
+  setPhase(PH_NET);
   ensureNet();                       // LAN/WLAN nach Policy; im apMode nur der Captive-DNS
 
   // WLAN-Provisioning: heikle Seiteneffekte gehören in loop(), nicht in Web-Handler
@@ -183,22 +187,26 @@ void loop() {
     ESP.restart();
   }
 
+  setPhase(PH_MQTT);
   ensureMqtt();
   mqtt.loop();
 
   // Vom Async-Webserver angeforderte, NICHT thread-safe Aktionen hier ausführen:
+  setPhase(PH_APPLY);
   if (applyStromPending) { applyStromPending = false; applyStrom(); }
   if (applySendLedPending) { applySendLedPending = false; applySendLed(); }
   if (applyMqttPending)  { applyMqttPending  = false; applyMqtt(); }
   if (pubHeatCfg)  { pubHeatCfg  = false; mqtt.publish((heatPrefix()  + "interval_h").c_str(), String(heatIntervalH).c_str(), true); publishHeatNext(); }
   if (pubStromCfg) { pubStromCfg = false; mqtt.publish((stromPrefix() + "send_s").c_str(),     String(stromMqttS).c_str(),    true); }
-  if (reqRead)     { reqRead     = false; readHeat(); lastHeat = millis(); }
+  if (reqRead)     { reqRead     = false; setPhase(PH_HEAT); readHeat(); lastHeat = millis(); }
   if (clearCrashReq) { clearCrashReq = false; clearLastCrash(); }
 
+  setPhase(PH_STROM);
   if (stromEnabled) smlPoll();
 
   unsigned long now = millis();
 
+  setPhase(PH_PUBLISH);
   if (now - lastStromMqtt >= stromMqttMs()) {
     lastStromMqtt = now;
     publishStrom();
@@ -209,6 +217,7 @@ void loop() {
   // durch Lesedauer/Timeouts, kein Doppel-Feuern, und ein verpasster Slot (Gerät war
   // blockiert) wird beim nächsten freien loop() nachgeholt.
   if (heatEnabled) {
+    setPhase(PH_HEAT);
     if (timeValid()) {
       time_t slot = heatDueSlot();
       if (slot != 0 && (long)slot != lastHeatSlot) {
@@ -224,4 +233,5 @@ void loop() {
       publishHeatNext();                 // ohne NTP -> "unknown"
     }
   }
+  setPhase(PH_IDLE);                     // Durchlauf sauber beendet
 }
