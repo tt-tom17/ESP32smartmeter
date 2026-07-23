@@ -72,6 +72,12 @@ ein eigenes Setup-WLAN eingerichtet und im NVS gespeichert:
 Später lässt sich das WLAN unter **Einstellungen → WLAN → „WLAN vergessen"**
 zurücksetzen (öffnet nach dem Neustart wieder das Setup-Portal).
 
+> **Mit LAN-Kabel (ab FW 1.6.0) entfällt dieser Schritt.** In der Default-Betriebsart
+> *Auto* fährt der ESP zuerst das Ethernet hoch: Bekommt er darüber eine IP, ist er sofort
+> erreichbar und öffnet gar kein Setup-Portal — die IP steht dann im Router bzw. auf der
+> Startseite unter **Verbindung → Netz**. Das Portal kommt nur, wenn binnen 8 s keine
+> LAN-IP da ist *und* keine WLAN-Zugangsdaten hinterlegt sind.
+
 ---
 
 ## 4. Inbetriebnahme

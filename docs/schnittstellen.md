@@ -56,6 +56,12 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
   - unter **`strom`**: `maxw` (Plausibilitätsgrenze, s. `/setstrom`), `crc_ok` / `crc_err`
     (geprüfte bzw. verworfene SML-Telegramme, seit Boot) und `implausible` (wegen `maxw`
     verworfene Leistungswerte).
+  - **Netz** (ab FW 1.6.0): `net_mode` (eingestellte Betriebsart `0`/`1`/`2`, s. `/setnet`),
+    `net_if` (welches Interface gerade trägt: `eth`, `wifi` oder `none`), `ip` (Adresse des
+    tragenden Interfaces), `wifi` (WLAN verbunden ja/nein) sowie das Objekt **`eth`** mit
+    `enabled`, `link` (Kabel steht), `up` (LAN nutzbar = Link + IP) und — sobald der W5500
+    initialisiert wurde — `ip`, `speed` (Mbit/s), `duplex` und `mac`. `rssi` bezieht sich
+    weiterhin nur aufs WLAN und ist im reinen LAN-Betrieb ohne Aussage.
 - `GET /setheat?en=0|1&start=HH:MM&h=N&tx=G&rx=G` — Wärme: an/aus, Startuhrzeit,
   Intervall (h; wird auf den nächsten Teiler von 24 eingerastet), TX-/RX-GPIO
 - `GET /setstrom?en=0|1&rx=G&s=Sek&maxw=W` — Strom: an/aus, RX-GPIO, Sendeintervall,
@@ -74,6 +80,19 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
   im `/api`-JSON unter `sendled.enabled/gpio/level` (siehe [troubleshooting.md](troubleshooting.md))
 - `GET /setmqtt?en=0|1&root=...&host=...&port=1883&user=...&pw=...` — MQTT konfigurieren
   (leeres/weggelassenes `pw` lässt das gespeicherte Passwort unverändert)
+- `GET /setnet?mode=0|1|2` — Netz-Betriebsart (ab FW 1.6.0): `0` = **Auto** (LAN bevorzugt,
+  WLAN springt ein, wenn binnen 8 s keine LAN-IP kommt), `1` = **nur LAN**, `2` = **nur WLAN**
+  (der W5500 wird dann gar nicht erst initialisiert). Die Umschaltung **startet das Gerät neu** —
+  Interfaces zur Laufzeit zu wechseln ist beim ESP32 fragil. Ein unbekannter Wert wird ignoriert.
+
+  > ⚠️ Bei **nur LAN** ohne funktionierendes Kabel öffnet der Zähler nach 2 Minuten das
+  > Setup-WLAN `Zaehler-Setup` — sonst wäre er nach einer Fehlkonfiguration nur noch per
+  > USB erreichbar. Über das Portal kommt man wieder an die Einstellungen.
+
+  ```bash
+  curl "http://<IP>/setnet?mode=0"   # Auto (Default)
+  curl "http://<IP>/setnet?mode=1"   # nur LAN
+  ```
 - `GET /read` — Wärme **jetzt** einmalig lesen (verschiebt den geplanten Zeitplan nicht)
 - `GET /toggle` — Sign-on-Sequenz des Wärmezählers umschalten (`/?!` ↔ `/#!`), falls ein
   Zähler auf die Standard-Sequenz nicht antwortet; Antwort = aktive Sequenz
