@@ -22,6 +22,18 @@ unsigned long apStartedAt = 0;             // millis() beim Portal-Start (Timeou
 String   wifiSsid = "";                    // aus NVS geladene WLAN-Zugangsdaten
 String   wifiPass = "";
 
+// ─── Netz-Zustand: Ethernet (W5500) + Policy ──────────────────────────────────
+// netMode kommt aus dem NVS ("net_mode") und ist im Web umschaltbar (auto/eth/wifi).
+// Die beiden eth-Flags setzt der Network-Event-Callback — der läuft in einem EIGENEN
+// Task (nicht in loop()), deshalb volatile. Es werden dort nur Flags gesetzt, alles
+// Weitere entscheidet ensureNet() aus loop() heraus (gleiche Regel wie im Web-Task).
+uint8_t netMode = NET_MODE_DEF;
+volatile bool ethLink   = false;    // Kabel-Link steht (ARDUINO_EVENT_ETH_CONNECTED)
+volatile bool ethHasIp  = false;    // DHCP/IP steht -> LAN wirklich nutzbar
+bool ethStarted  = false;           // ETH.begin() gelaufen (nur einmal aufrufen)
+bool wifiStarted = false;           // WLAN im Auto-Modus dazugeschaltet
+unsigned long netStartedAt = 0;     // millis() beim Netzstart (Auto-Umschaltung/Lockout)
+
 // ─── Thread-Safety: Web-Handler -> loop() ─────────────────────────────────────
 // Async-Handler laufen in einem EIGENEN Task. PubSubClient (MQTT) und die UARTs sind
 // NICHT thread-safe -> Web-Handler setzen nur Werte/Flags, die heiklen Seiteneffekte
@@ -45,10 +57,23 @@ unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (mi
 // Read pro /api-Poll. "{\"present\":false}" = kein (gültiger) Dump vorhanden.
 String lastCrashJson = "{\"present\":false}";
 
+// ─── Interface-Status: was trägt gerade? ──────────────────────────────────────
+// Ab 1.6.0 kann das Gerät über LAN ODER WLAN hängen. Alles, was früher stumpf
+// WiFi.status() abgefragt hat (MQTT, Watchdog, /api), fragt jetzt netUp() —
+// sonst würde z.B. der Watchdog bei reinem LAN-Betrieb dauernd anschlagen.
+inline bool ethEnabled() { return netMode != NET_MODE_WIFI; }   // W5500 überhaupt starten?
+inline bool ethUp()      { return ethHasIp; }                   // LAN nutzbar (Link + IP)
+inline bool wifiUp()     { return WiFi.status() == WL_CONNECTED; }
+inline bool netUp()      { return ethUp() || wifiUp(); }
+// Welches Interface trägt? LAN hat Vorrang, wenn beide oben sind.
+inline const char* netIfName() { return ethUp() ? "eth" : (wifiUp() ? "wifi" : "none"); }
+inline IPAddress   netIP()     { return ethUp() ? ETH.localIP() : WiFi.localIP(); }
+
 // ─── Selbstheilung: Verbindungs-Watchdog + Reboot-Grund ───────────────────────
-// millis() des letzten WL_CONNECTED (0 = seit dem Boot noch nie verbunden). loop()
-// rebootet, wenn das WLAN ab dem ersten Connect länger als NET_WATCHDOG_MS weg ist.
-unsigned long lastWifiOk = 0;
+// millis(), zu der zuletzt IRGENDEIN Interface oben war (0 = seit dem Boot noch nie).
+// loop() rebootet, wenn ab dem ersten Connect länger als NET_WATCHDOG_MS gar nichts
+// mehr trägt — weder LAN noch WLAN.
+unsigned long lastNetOk = 0;
 // Grund eines SELBST ausgelösten Neustarts über den Reboot hinweg festhalten: RTC-RAM
 // übersteht ESP.restart()/Watchdog-Reset, NICHT aber Power-on/Brownout (dort zufälliger
 // Inhalt) -> per Magic auf Gültigkeit prüfen. /api zeigt das als "reboot_by".

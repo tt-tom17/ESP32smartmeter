@@ -1,6 +1,8 @@
 /*
  * ESP32 (WROOM-32) – Wärme- + Stromzähler-Reader
  * ───────────────────────────────────────────────────────────────────────────
+ *  Netz  : LAN (W5500 über SPI) und/oder WLAN — Policy im Web umschaltbar
+ *          (auto = LAN bevorzugt mit WLAN-Rückfall / nur LAN / nur WLAN).
  *  Wärme : Landis+Gyr UH50 / T550   via D0 (IEC 62056-21), 300 TX / 2400 RX, 7E1
  *          Ablauf: 40x 0x00 Wake-up + Sign-on "/?!\r\n" @300 -> Identifikation
  *          lesen -> Baudrate aus 5. Zeichen -> (Mode C: ACK) -> Datenblock lesen.
@@ -36,6 +38,8 @@
  */
 
 #include <WiFi.h>
+#include <ETH.h>          // W5500 über SPI (Arduino-Core 3.x ETH-Wrapper)
+#include <Network.h>      // Network.onEvent() — Interface-Ereignisse (LAN/WLAN)
 #include <DNSServer.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -73,6 +77,8 @@ void setup() {
   // Konfiguration aus NVS laden
   prefs.begin("zaehler", false);
   loadWifiCreds();                   // WLAN-Zugangsdaten (leer -> Setup-Portal)
+  netMode       = prefs.getUChar("net_mode", NET_MODE_DEF);
+  if (netMode > NET_MODE_WIFI) netMode = NET_MODE_DEF;   // krummer NVS-Wert -> Default
   heatEnabled   = prefs.getUChar("heat_en", 1) != 0;
   heatIntervalH = snapHeatInterval(prefs.getUChar("heat_h", HEAT_INTERVAL_DEF_H));
   heatStartMin  = prefs.getUShort("heat_start", HEAT_START_DEF_MIN);
@@ -95,7 +101,8 @@ void setup() {
   mqttUser   = prefs.getString("mqtt_user", "");
   mqttPass   = prefs.getString("mqtt_pass", "");
   mqttRoot   = prefs.getString("mqtt_root", MQTT_ROOT_DEF);
-  Serial.printf("[CFG] WLAN '%s' | Wärme %s ab %02u:%02u alle %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
+  Serial.printf("[CFG] Netz %s | WLAN '%s' | Wärme %s ab %02u:%02u alle %uh TX%u RX%u | Strom %s GPIO%u | MQTT %s:%u user=%s\n",
+                netMode == NET_MODE_ETH ? "nur LAN" : (netMode == NET_MODE_WIFI ? "nur WLAN" : "auto (LAN bevorzugt)"),
                 wifiSsid.length() ? wifiSsid.c_str() : "(unkonfiguriert -> Portal)",
                 heatEnabled ? "AN" : "AUS", heatStartMin / 60, heatStartMin % 60,
                 heatIntervalH, heatTxPin, heatRxPin,
@@ -105,7 +112,8 @@ void setup() {
   applyStrom();                      // Strom-UART je nach Konfig starten
   applySendLed();                    // Sende-Diode des SML-Kopfes parken
 
-  ensureWifi();
+  netStartedAt = millis();           // Bezugspunkt für LAN-Vorlauf / Lockout-Rettungsanker
+  ensureNet();                       // Policy anwenden: LAN hochfahren und/oder WLAN
   startTime();                       // NTP-Sync für feste Wärme-Abfragezeiten starten
 
   mqtt.setServer(mqttServer.c_str(), mqttPort);
@@ -146,7 +154,7 @@ void loop() {
   if (restartAt && millis() >= restartAt) { restartAt = 0; ESP.restart(); }
   ArduinoOTA.handle();
   if (otaActive) return;
-  ensureWifi();                      // im apMode bedient das nur den Captive-DNS
+  ensureNet();                       // LAN/WLAN nach Policy; im apMode nur der Captive-DNS
 
   // WLAN-Provisioning: heikle Seiteneffekte gehören in loop(), nicht in Web-Handler
   if (credSaveReq)  { credSaveReq  = false; saveWifiCreds(pendingSsid, pendingPass); restartAt = millis() + 500; }
@@ -161,14 +169,15 @@ void loop() {
     return;
   }
 
-  // Verbindungs-Watchdog (STA-Betrieb): WLAN nach dem ersten Connect zu lange weg ->
-  // Neustart, weil ensureWifi() den verklemmten Treiber sonst endlos ergebnislos
-  // neu anstößt (= der beobachtete stumme Ausfall ohne Reboot). Erst scharf, sobald
-  // wir überhaupt einmal verbunden waren (lastWifiOk != 0).
-  if (WiFi.status() == WL_CONNECTED) {
-    lastWifiOk = millis();
-  } else if (lastWifiOk != 0 && millis() - lastWifiOk > NET_WATCHDOG_MS) {
-    Serial.println("[NET-WDT] WLAN zu lange weg -> Neustart zur Selbstheilung");
+  // Verbindungs-Watchdog: Ist nach dem ersten Connect zu lange KEIN Interface mehr
+  // oben, Neustart — ensureWifi() stößt den verklemmten Treiber sonst endlos
+  // ergebnislos neu an (= der beobachtete stumme Ausfall ohne Reboot). Erst scharf,
+  // sobald wir überhaupt einmal Netz hatten (lastNetOk != 0). Seit 1.6.0 zählt LAN
+  // gleichberechtigt: bei gestecktem Kabel schlägt ein WLAN-Ausfall hier nicht an.
+  if (netUp()) {
+    lastNetOk = millis();
+  } else if (lastNetOk != 0 && millis() - lastNetOk > NET_WATCHDOG_MS) {
+    Serial.println("[NET-WDT] weder LAN noch WLAN -> Neustart zur Selbstheilung");
     markReboot(REBOOT_BY_NETWDT);    // Grund über den Reboot hinweg fürs /api merken
     delay(50); Serial.flush();
     ESP.restart();
