@@ -37,18 +37,29 @@ static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 // ─── Ethernet (W5500 über SPI) + Netz-Policy ──────────────────────────────────
 // Das W5500-Modul hängt am freien VSPI-Vierer; als SPI-Host dient SPI2 (HSPI), die
 // Pins werden per GPIO-Matrix dorthin geroutet — bei 20 MHz unkritisch. Belegt sind
-// damit 18/19/23 (Bus) sowie 21 (CS), 34 (IRQ, input-only genügt) und 26 (Reset).
+// damit 18/19/23 (Bus) sowie 21 (CS), 34 (IRQ-Draht, s. u.) und 26 (Reset).
 // WICHTIG: Diese sechs GPIOs stehen dadurch NICHT mehr für Zählerköpfe zur Verfügung
 // und sind aus validInPin()/validOutPin() (web.h) sowie INPINS/OUTPINS (web_pages.h)
-// entfernt. Modul-VCC an 3V3 (kein eigener Regler!), Signale sind 5-V-tolerant.
+// entfernt. Modul-VCC an 5V ODER 3V3 — das Modul hat einen eigenen AMS1117-3.3;
+// 5 V ist vorzuziehen, das entlastet den Regler des ESP-Boards. Signale 5-V-tolerant.
 #define W5500_SCK_PIN   18
 #define W5500_MISO_PIN  19
 #define W5500_MOSI_PIN  23
 #define W5500_CS_PIN    21
-#define W5500_IRQ_PIN   34
+// IRQ bewusst AUS (-1): der Treiber pollt dann alle 10 ms (ETH_SPI_SUPPORTS_NO_IRQ,
+// Arduino-Core 3.x) — bei unserer Datenmenge unkritisch. Grund: der als INT verdrahtete
+// GPIO34 ist input-only und hat keinen internen Pull-up; ETH.begin() quittiert das mit
+// "gpio_pullup_en(85): GPIO number error". Am 26.07.2026 im Feld verifiziert, dass LAN
+// ohne IRQ trägt. Der Draht darf am Modul bleiben, deshalb bleibt 34 oben gesperrt.
+#define W5500_IRQ_PIN   -1
 #define W5500_RST_PIN   26
 #define W5500_PHY_ADDR  1
-#define W5500_SPI_MHZ   20
+// 8 statt 20 MHz: bei 20 MHz brach die SPI-Strecke am 26.07.2026 unter Volllast
+// (Web-OTA, 1,3 MB) reproduzierbar zusammen — "emac_w5500_receive: write RX RD failed" /
+// "w5500_send_command: read SCR failed", im Leerlauf dagegen fehlerfrei. Typisch für
+// fliegende Verdrahtung ohne kurzen GND-Rückweg. 8 MHz reichen für 100 Mbit/s Ethernet
+// bei unserer Datenmenge um Größenordnungen; erst bei sauberer Platine wieder erhöhen.
+#define W5500_SPI_MHZ   8
 
 // Netz-Policy, im Web umschaltbar (NVS "net_mode"). Ein Wechsel greift erst nach
 // einem Neustart — Interfaces zur Laufzeit umzuschalten ist beim ESP32 fragil, und
