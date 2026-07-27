@@ -54,6 +54,33 @@ curl "http://<IP>/api" | jq .reset_reason
 Kurz: `brownout`/`poweron` deuten auf die **Stromseite**, `panic`/`*_wdt` auf die
 **Firmware**. Direkt nach einem OTA-Flash steht hier korrekt `sw`.
 
+## LAN (W5500)
+
+Ab FW 1.6.0 kann der ESP statt oder neben dem WLAN über ein **W5500**-Modul am SPI-Bus
+ans Netz. Erste Anlaufstelle ist immer das `/api`-JSON:
+
+```bash
+curl -s "http://<IP>/api" | jq '{mode: .net_mode, iface: .net_if, ip: .ip, eth: .eth}'
+```
+
+`net_if` sagt, worüber das Gerät **gerade** erreichbar ist (`eth` / `wifi`), das Objekt
+`eth` liefert `link`, `speed` (10/100), `duplex` und die MAC. Auf der Startseite steht
+dasselbe unter **Verbindung → Netz**.
+
+| Symptom | Ursache / Abhilfe |
+| --- | --- |
+| `eth.link` bleibt `false` | Kabel/Switch prüfen; Versorgung des Moduls (`5V`, `GND`) und die fünf SPI-Drähte SCLK18 · MISO19 · MOSI23 · SCS21 · RST26 nachmessen. |
+| Link da, aber keine IP | DHCP im Netz? In der Betriebsart *Auto* wartet der ESP 8 s auf eine LAN-IP und zieht danach zusätzlich das WLAN hoch — `net_if` zeigt dann `wifi`. |
+| Log: `emac_w5500_receive: write RX RD failed` bzw. `read PHY register failed`, LAN bricht unter Last weg | **SPI-Takt zu hoch.** Bei 20 MHz brach die Strecke unter Volllast (Web-OTA, 1,3 MB) reproduzierbar zusammen — typisch für fliegende Verdrahtung ohne kurzen GND-Rückweg. `W5500_SPI_MHZ` steht deshalb auf **8**; das reicht für 100 Mbit/s bei dieser Datenmenge um Größenordnungen. Erst bei sauberer Platine wieder erhöhen. |
+| Boot-Fehler `gpio_pullup_en(85): GPIO number error` | Der als `INT` verdrahtete **GPIO34 ist input-only und hat keinen internen Pull-up**. Der Treiber läuft ohne Interrupt (`W5500_IRQ_PIN` = `-1`, pollt alle 10 ms) — im Feld verifiziert. Der Draht darf am Modul bleiben. |
+| Gerät nach Umschalten auf *nur LAN* nicht mehr erreichbar | Kein Grund zur Panik: Bleibt in dieser Betriebsart 2 min lang eine LAN-IP aus, öffnet der ESP von selbst das Setup-Portal (`Zaehler-Setup`). Ein USB-Reflash ist dafür nicht nötig. |
+
+> Jede Umschaltung der Betriebsart (*Auto* / *nur LAN* / *nur WLAN*) **startet das Gerät
+> absichtlich neu** — Interfaces zur Laufzeit umzuhängen ist beim ESP32 fragil.
+
+> Der Verbindungs-Watchdog prüft seit 1.6.0 „**irgendein** Interface oben" statt nur das
+> WLAN: Mit gestecktem Kabel führt ein WLAN-Ausfall also nicht mehr zum Reboot.
+
 ## Bekannte Grenzen
 - Generischer SML-Scan: nur Strom-Register (OBIS-Medium 1) mit Integer-Wert;
   Mehrbyte-Zählerstände werden als 32-Bit gelesen (für Haushaltswerte ausreichend).
@@ -69,10 +96,14 @@ Kurz: `brownout`/`poweron` deuten auf die **Stromseite**, `panic`/`*_wdt` auf di
 
   | Verwendung | erlaubte GPIOs |
   | --- | --- |
-  | RX **und** TX (Ein-/Ausgang) | 16–19, 21–23, 25–27, 32, 33 |
-  | nur RX (reine Eingänge) | 34, 35, 36, 39 |
+  | RX **und** TX (Ein-/Ausgang) | 16, 17, 22, 25, 27, 32, 33 |
+  | nur RX (reine Eingänge) | 35, 36, 39 |
 
   Gesperrt sind damit außer den Flash-Pins 6–11 auch **37/38**, die UART0-Pins **1/3**, die
   Strapping-Pins **0/2/12/15** sowie die am ESP32 nicht herausgeführten **20/24/28–31**.
+  **Seit FW 1.6.0 zusätzlich gesperrt: 18/19/21/23/26 und 34** — sie gehören dem
+  W5500 (SPI, Reset, INT). Ein Lesekopf auf dem SPI-Bus würde das LAN mit lahmlegen.
+  Die Defaults 17/16/27 sind davon nicht betroffen, bestehende Geräte müssen also
+  nichts umstellen.
   ⚠️ **Ungültige Werte werden still verworfen** — der Setter antwortet trotzdem mit `ok`,
   der alte Pin bleibt stehen. Nach dem Setzen im `/api`-JSON gegenprüfen.
