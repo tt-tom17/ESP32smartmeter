@@ -88,7 +88,6 @@ physische Lage der Pins. Alle benötigten GPIOs (16, 17, 18, 19, 21, 23, 25, 26,
 | **ESP32 Dev Kit C V4** (38 Pins) | aktuell verbaut, ab FW 1.6.0 mit LAN |
 | **MH-ET LIVE D1 mini ESP32** | Bestandsgerät, weiterhin unterstützt |
 
-![Pinout MH-ET LIVE D1 mini ESP32](docs/img/esp32-d1mini-pinout.png)
 
 Die Default-Pins **GPIO16/17/27** sind auf beiden Boards „grün = immer nutzbar“. Wer die
 GPIOs über die Weboberfläche umstellt, sollte beachten:
