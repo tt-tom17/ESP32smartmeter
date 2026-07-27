@@ -1,0 +1,74 @@
+name: Build
+
+# Baut die Firmware bei jedem Pull Request und bei jedem Push auf main — rein zur
+# Kontrolle, ohne etwas zu veröffentlichen. Das Release macht weiterhin allein
+# release.yml beim Tag-Push (v*).
+#
+# Zweck: Bis hierher lief der erste CI-Build erst beim Tag — ein Fehler fiel also
+# erst auf, wenn das Tag schon veröffentlicht war. Dieser Workflow zieht die
+# Prüfung an den Pull Request vor.
+#
+# Die gebauten Images hängen als Artefakt am Lauf und lassen sich zum Testen per
+# Web-OTA (http://<IP>/update) flashen, bevor irgendetwas gemergt oder getaggt ist.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nur lesen — dieser Workflow darf am Repository nichts ändern.
+permissions:
+  contents: read
+
+# Ein neuer Push auf denselben Branch bricht den noch laufenden Build ab.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Python einrichten
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: PlatformIO-Toolchain aus dem Cache
+        # Der pioarduino-Core zieht rund 5 GB Toolchain nach; ohne Cache dauert
+        # jeder Lauf entsprechend länger. Der Key hängt an platformio.ini, damit
+        # ein Plattform-Wechsel den Cache sauber verwirft.
+        uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: PlatformIO installieren
+        run: pip install --upgrade platformio
+
+      - name: Firmware bauen
+        run: pio run
+
+      - name: Release-Images müssen entstanden sein
+        # Derselbe Test wie in release.yml: seit dem Core-3.x-Port erzeugt der
+        # Build die factory-Datei selbst. Bricht das weg, scheitert sonst erst
+        # der Tag-Lauf — also hier schon prüfen.
+        run: |
+          set -euo pipefail
+          B=.pio/build/esp32dev
+          test -f "$B/firmware.bin"
+          test -f "$B/firmware.factory.bin"
+          sha256sum "$B/firmware.bin" "$B/firmware.factory.bin"
+
+      - name: Images als Artefakt anhängen
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ github.sha }}
+          path: |
+            .pio/build/esp32dev/firmware.bin
+            .pio/build/esp32dev/firmware.factory.bin
+          retention-days: 14
