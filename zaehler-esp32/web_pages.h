@@ -41,6 +41,7 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <title>Zähler</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
 <div class=card><h2>Verbindung</h2>
+ <div class=row><span>Netz</span><b id=nif>–</b></div>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
  <div class=row><span>MQTT</span><span id=mqtt class=pill>–</span></div>
  <div class=row><span>Uptime</span><b id=up>–</b></div></div>
@@ -60,7 +61,8 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
 async function tick(){try{const d=await(await fetch('/api')).json();
- rssi.textContent=d.rssi+' dBm';
+ nif.textContent=(d.net_if=='eth'?'LAN':(d.net_if=='wifi'?'WLAN':'getrennt'))+(d.ip&&d.net_if!='none'?' · '+d.ip:'');
+ rssi.textContent=d.wifi?(d.rssi+' dBm'):'–';   // RSSI ist nur im WLAN-Betrieb aussagekräftig
  if(d.fw_ver!=null)fwv.textContent=d.fw_ver;
  if(d.fw_build)fwb.textContent=d.fw_build;
  if(!d.mqtt_en)pill(mqtt,false,'aus');else pill(mqtt,d.mqtt,d.mqtt?'verbunden':'getrennt');
@@ -158,6 +160,19 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
  <div class=row><span>User</span><input id=muser placeholder="leer = anonym"></div>
  <div class=row><span>Passwort</span><input type=password id=mpw placeholder="leer = unverändert"></div>
  <button onclick=saveMqtt()>Speichern</button><div class=s id=mmsg></div></div>
+<div class=card><h2>🔌 Netzwerk</h2>
+ <div class=row><span>Aktiv</span><b id=nif>–</b></div>
+ <div class=row><span>IP</span><b id=nip>–</b></div>
+ <div class=row><span>LAN-Link</span><span id=elink class=pill>–</span></div>
+ <div class=row><span>Betriebsart</span><select id=nmode>
+   <option value=0>Auto (LAN bevorzugt)</option>
+   <option value=1>Nur LAN</option>
+   <option value=2>Nur WLAN</option></select></div>
+ <button onclick=nSave()>Speichern &amp; neu starten</button>
+ <div class=s>Die Betriebsart greift erst nach einem Neustart — der wird direkt ausgelöst.
+ Bei „Nur LAN" ohne Kabel öffnet der Zähler nach 2 Minuten das Setup-WLAN, damit er
+ erreichbar bleibt.</div>
+ <div class=s id=nmsg></div></div>
 <div class=card><h2>📶 WLAN</h2>
  <div class=row><span>Verbunden mit</span><b id=wssid>–</b></div>
  <button class=alt onclick=wreset()>WLAN vergessen &amp; neu einrichten</button>
@@ -168,8 +183,10 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <pre id=p style='font-size:1.3rem'></pre></div>
 <div class=foot>Firmware v<span id=fwv>–</span> · Build <span id=fwb>–</span></div>
 <script>
-const INPINS=[16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
-const OUTPINS=[16,17,18,19,21,22,23,25,26,27,32,33];
+// Ohne die W5500-Pins 18/19/23 (SPI), 21 (CS), 26 (RST), 34 (IRQ) — muss deckungsgleich
+// mit validInPin()/validOutPin() in web.h bleiben (scripts/pin-parity-check.ts prüft das).
+const INPINS=[16,17,22,25,27,32,33,35,36,39];
+const OUTPINS=[16,17,22,25,27,32,33];
 function opt(sel,a){sel.innerHTML='';for(const p of a){var o=document.createElement('option');o.value=p;o.textContent='GPIO'+p;sel.appendChild(o);}}
 opt(sgpio,INPINS);opt(htx,OUTPINS);opt(hrx,INPINS);opt(slgpio,OUTPINS);
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
@@ -187,6 +204,8 @@ function saveMqtt(){var q='/setmqtt?root='+encodeURIComponent(mroot.value)+
  '&port='+mport.value+'&user='+encodeURIComponent(muser.value)+
  '&pw='+encodeURIComponent(mpw.value);
  fetch(q).then(()=>{mmsg.textContent=mEnabled?'gespeichert – verbinde neu…':'gespeichert';mpw.value='';});}
+function nSave(){if(!confirm('Betriebsart ändern? Der Zähler startet dazu neu.'))return;
+ fetch('/setnet?mode='+nmode.value).then(()=>{nmsg.textContent='gespeichert – Neustart…';});}
 function wreset(){if(!confirm('WLAN-Daten löschen und neu einrichten? Der Zähler startet neu und öffnet das Setup-WLAN „Zaehler-Setup".'))return;
  fetch('/wifireset').then(()=>{alert('Neustart… bitte mit dem WLAN „Zaehler-Setup" verbinden.');});}
 let inited=false;   // Eingabefelder NUR einmal befüllen, sonst überschreibt der Poll die Eingabe
@@ -194,6 +213,8 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
  // Live-Status (keine Eingabefelder) — darf jeder Poll aktualisieren:
  if(d.fw_ver!=null)fwv.textContent=d.fw_ver;if(d.fw_build)fwb.textContent=d.fw_build;
  wssid.textContent=d.wifi_ssid||'–';
+ if(d.net_if){nif.textContent=d.net_if=='eth'?'LAN':(d.net_if=='wifi'?'WLAN':'getrennt');nip.textContent=d.ip||'–';}
+ if(d.eth)pill(elink,d.eth.link,!d.eth.enabled?'aus':(d.eth.link?(d.eth.speed?d.eth.speed+' Mbit/s':'up'):'kein Kabel'));
  sEnabled=s.enabled;sen.textContent=s.enabled?'AN':'AUS';sen.className=s.enabled?'':'alt';
  if(d.sendled){slEnabled=d.sendled.enabled;slen.textContent=d.sendled.enabled?'AN':'AUS';slen.className=d.sendled.enabled?'':'alt';}
  hEnabled=w.enabled;hen.textContent=w.enabled?'AN':'AUS';hen.className=w.enabled?'':'alt';
@@ -207,6 +228,7 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
   if(d.sendled){slgpio.value=d.sendled.gpio;sllvl.value=d.sendled.level;}
   hih.value=w.interval_h;hstart.value=w.start_hhmm;htx.value=w.tx;hrx.value=w.rx;
   mroot.value=d.mqtt_root||'';mhost.value=d.mqtt_host||'';mport.value=d.mqtt_port||1883;muser.value=d.mqtt_user||'';
+  if(d.net_mode!=null)nmode.value=d.net_mode;
  }
 }catch(e){}}
 tick();setInterval(tick,3000);

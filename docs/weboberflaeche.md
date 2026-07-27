@@ -20,7 +20,8 @@ erkennt man, ob ein OTA-Flash wirklich angekommen ist.
 ## Start (`/`)
 Übersicht auf einen Blick, in Karten gegliedert:
 
-- **Verbindung** — WLAN-Signal (RSSI), MQTT-Status als farbige Pill
+- **Verbindung** — **Netz** (welches Interface trägt: `LAN` oder `WLAN`, mit IP-Adresse),
+  WLAN-Signal (RSSI; im reinen LAN-Betrieb steht dort `–`), MQTT-Status als farbige Pill
   (verbunden/getrennt), Uptime.
 - **⚡ Strom** — aktuelle Leistung groß in W, dazu Bezug, Einspeisung und Auslese-Status.
 - **🔥 Wärme** — aktueller Zählerstand groß in MWh, Status und **nächste Lesung**
@@ -72,6 +73,17 @@ Sämtliche Konfiguration an einem Ort. Änderungen werden im **NVS** gespeichert
 - **MQTT** — aktiv an/aus (**Default aus**), Status-Pill, Haupttopic, Host/IP, Port, User,
   Passwort. Speichern verbindet neu; leeres Passwortfeld lässt das gespeicherte PW
   unverändert.
+- **🔌 Netzwerk** (ab FW 1.6.0) — zeigt, welches Interface gerade trägt (**Aktiv**: LAN oder
+  WLAN), die **IP**, den **LAN-Link** als Pill (Geschwindigkeit in Mbit/s, `kein Kabel` oder
+  `aus`) und stellt die **Betriebsart** ein:
+  - **Auto (LAN bevorzugt)** — Default. Das Gerät fährt das LAN hoch; kommt binnen 8 s keine
+    LAN-IP, verbindet es sich zusätzlich per WLAN. Steckt das Kabel, trägt das LAN.
+  - **Nur LAN** — WLAN bleibt aus. Ohne funktionierendes Kabel öffnet der Zähler nach
+    2 Minuten das Setup-WLAN `Zaehler-Setup`, damit er erreichbar bleibt.
+  - **Nur WLAN** — das Ethernet-Modul wird gar nicht erst initialisiert.
+
+  **Speichern & neu starten** übernimmt die Betriebsart und **startet das Gerät neu** — ein
+  Interface-Wechsel im laufenden Betrieb ist beim ESP32 fragil.
 - **📶 WLAN** — mit welchem Netz verbunden, plus **„WLAN vergessen"** (löscht die
   Zugangsdaten aus dem NVS → Gerät startet wieder im Setup-Portal, siehe unten).
 - **Firmware-Update** — `.bin`-Datei wählen und per **Web-OTA** flashen. Fortschritt wird
@@ -80,6 +92,10 @@ Sämtliche Konfiguration an einem Ort. Änderungen werden im **NVS** gespeichert
 
 > Die Formularfelder werden beim Laden **einmal** aus dem aktuellen Zustand vorbefüllt;
 > das 3-Sekunden-Polling überschreibt eine laufende Eingabe **nicht**.
+
+> Seit FW 1.6.0 bieten die **GPIO-Dropdowns** die Pins des Ethernet-Moduls nicht mehr an
+> (18/19/23 SPI-Bus, 21 CS, 26 Reset, 34 IRQ) — auch nicht im Modus „Nur WLAN", denn das
+> Modul bleibt ja verdrahtet. Ein Zählerkopf auf diesen Pins würde den SPI-Bus stören.
 
 <!-- TODO Bild: Einstellungsseite (Strom / Wärme / MQTT / WLAN / Firmware-Update) -->
 ![Einstellungen](img/einstellungen1.png)![Einstellungen](img/einstellungen2.png)

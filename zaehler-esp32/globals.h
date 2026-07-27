@@ -22,6 +22,18 @@ unsigned long apStartedAt = 0;             // millis() beim Portal-Start (Timeou
 String   wifiSsid = "";                    // aus NVS geladene WLAN-Zugangsdaten
 String   wifiPass = "";
 
+// ─── Netz-Zustand: Ethernet (W5500) + Policy ──────────────────────────────────
+// netMode kommt aus dem NVS ("net_mode") und ist im Web umschaltbar (auto/eth/wifi).
+// Die beiden eth-Flags setzt der Network-Event-Callback — der läuft in einem EIGENEN
+// Task (nicht in loop()), deshalb volatile. Es werden dort nur Flags gesetzt, alles
+// Weitere entscheidet ensureNet() aus loop() heraus (gleiche Regel wie im Web-Task).
+uint8_t netMode = NET_MODE_DEF;
+volatile bool ethLink   = false;    // Kabel-Link steht (ARDUINO_EVENT_ETH_CONNECTED)
+volatile bool ethHasIp  = false;    // DHCP/IP steht -> LAN wirklich nutzbar
+bool ethStarted  = false;           // ETH.begin() gelaufen (nur einmal aufrufen)
+bool wifiStarted = false;           // WLAN im Auto-Modus dazugeschaltet
+unsigned long netStartedAt = 0;     // millis() beim Netzstart (Auto-Umschaltung/Lockout)
+
 // ─── Thread-Safety: Web-Handler -> loop() ─────────────────────────────────────
 // Async-Handler laufen in einem EIGENEN Task. PubSubClient (MQTT) und die UARTs sind
 // NICHT thread-safe -> Web-Handler setzen nur Werte/Flags, die heiklen Seiteneffekte
@@ -45,10 +57,23 @@ unsigned long restartAt         = 0;      // geplanter Neustart nach Web-OTA (mi
 // Read pro /api-Poll. "{\"present\":false}" = kein (gültiger) Dump vorhanden.
 String lastCrashJson = "{\"present\":false}";
 
+// ─── Interface-Status: was trägt gerade? ──────────────────────────────────────
+// Ab 1.6.0 kann das Gerät über LAN ODER WLAN hängen. Alles, was früher stumpf
+// WiFi.status() abgefragt hat (MQTT, Watchdog, /api), fragt jetzt netUp() —
+// sonst würde z.B. der Watchdog bei reinem LAN-Betrieb dauernd anschlagen.
+inline bool ethEnabled() { return netMode != NET_MODE_WIFI; }   // W5500 überhaupt starten?
+inline bool ethUp()      { return ethHasIp; }                   // LAN nutzbar (Link + IP)
+inline bool wifiUp()     { return WiFi.status() == WL_CONNECTED; }
+inline bool netUp()      { return ethUp() || wifiUp(); }
+// Welches Interface trägt? LAN hat Vorrang, wenn beide oben sind.
+inline const char* netIfName() { return ethUp() ? "eth" : (wifiUp() ? "wifi" : "none"); }
+inline IPAddress   netIP()     { return ethUp() ? ETH.localIP() : WiFi.localIP(); }
+
 // ─── Selbstheilung: Verbindungs-Watchdog + Reboot-Grund ───────────────────────
-// millis() des letzten WL_CONNECTED (0 = seit dem Boot noch nie verbunden). loop()
-// rebootet, wenn das WLAN ab dem ersten Connect länger als NET_WATCHDOG_MS weg ist.
-unsigned long lastWifiOk = 0;
+// millis(), zu der zuletzt IRGENDEIN Interface oben war (0 = seit dem Boot noch nie).
+// loop() rebootet, wenn ab dem ersten Connect länger als NET_WATCHDOG_MS gar nichts
+// mehr trägt — weder LAN noch WLAN.
+unsigned long lastNetOk = 0;
 // Grund eines SELBST ausgelösten Neustarts über den Reboot hinweg festhalten: RTC-RAM
 // übersteht ESP.restart()/Watchdog-Reset, NICHT aber Power-on/Brownout (dort zufälliger
 // Inhalt) -> per Magic auf Gültigkeit prüfen. /api zeigt das als "reboot_by".
@@ -57,6 +82,36 @@ unsigned long lastWifiOk = 0;
 RTC_NOINIT_ATTR uint32_t rtcRebootMagic;
 RTC_NOINIT_ATTR uint32_t rtcRebootCode;
 String rebootBy = "none";                    // in setup() aus dem RTC-RAM gelesen
+
+// ─── Wo hing loop(), als der Task-Watchdog zuschlug? ──────────────────────────
+// Anlass: Der TWDT-Griff am 21.07.2026 rebootete zwar sauber, ließ die URSACHE aber
+// offen — der Core-Dump war `corrupted` (1 Frame), und der aussagekräftige TWDT-Panic-
+// Text ("task did not reset the watchdog") landet nur flüchtig auf Serial. Deshalb
+// schreibt loop() den gerade laufenden Abschnitt fortlaufend ins RTC-RAM; das übersteht
+// den Watchdog-Reset. Nach einem Crash-Boot zeigt /api ihn als "wdt_where" — damit ist
+// beim nächsten Griff wenigstens der blockierende Abschnitt bekannt.
+// Kostet einen einzelnen 32-Bit-Write je Phasenwechsel (RTC-RAM, vernachlässigbar).
+#define RTC_PHASE_MAGIC 0x10075EE1UL
+RTC_NOINIT_ATTR uint32_t rtcPhaseMagic;
+RTC_NOINIT_ATTR uint32_t rtcPhase;
+enum LoopPhase : uint32_t { PH_IDLE = 0, PH_OTA, PH_NET, PH_MQTT, PH_APPLY, PH_STROM, PH_PUBLISH, PH_HEAT };
+static const char* PHASE_NAMES[] = { "idle", "ota", "net", "mqtt", "apply", "strom", "publish", "heat" };
+String wdtWhere = "";                        // nur nach einem Crash-Boot gefüllt
+
+inline void setPhase(uint32_t p) { rtcPhase = p; }   // Magic setzt setup() einmalig
+
+// Beim Boot auswerten: Der Wert ist NUR aussagekräftig, wenn dieser Boot aus einem
+// Panic/Watchdog kam — sonst (OTA-Reboot, Power-on) steht dort die zuletzt normal
+// durchlaufene Phase bzw. nach Power-on Zufall. Danach das Magic neu setzen, damit
+// die laufende Sitzung wieder mitschreibt.
+inline void captureLoopPhase() {
+  esp_reset_reason_t r = esp_reset_reason();
+  bool crash = (r == ESP_RST_PANIC || r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT);
+  if (crash && rtcPhaseMagic == RTC_PHASE_MAGIC && rtcPhase < (sizeof PHASE_NAMES / sizeof *PHASE_NAMES))
+    wdtWhere = PHASE_NAMES[rtcPhase];
+  rtcPhaseMagic = RTC_PHASE_MAGIC;
+  rtcPhase = PH_IDLE;
+}
 
 // Vor einem selbst ausgelösten Neustart den Grund im RTC-RAM hinterlegen.
 inline void markReboot(uint32_t code) { rtcRebootMagic = RTC_REBOOT_MAGIC; rtcRebootCode = code; }

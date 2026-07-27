@@ -33,16 +33,23 @@ Bootloader, Partitionstabelle und App in einem und wird an Offset `0x0` geschrie
 
 ### Variante B — Kommandozeile (esptool)
 ```bash
-esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
-  write_flash 0x0 ESP32smartmeter-<version>-factory.bin
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
+  write-flash 0x0 ESP32smartmeter-<version>-factory.bin
 ```
-(Port ggf. anpassen, z. B. `COM5` unter Windows.)
+(Port ggf. anpassen, z. B. `COM5` unter Windows. Bei esptool v4 und älter heißt der
+Aufruf noch `esptool.py … write_flash`.)
+
+> ⚠️ **Nicht mit selbst zusammengesetzten Images verwechseln.** Die `factory.bin` aus
+> den Releases beginnt mit 4 KB Füllbytes und gehört deshalb an **`0x0`**. Ein Image,
+> das direkt mit dem Bootloader anfängt, gehört an `0x1000`. Falscher Offset =
+> Board startet nicht.
 
 ---
 
 ## 2. Firmware-Update per Web-OTA
 
-Sobald die Firmware läuft und im WLAN ist, gehen weitere Updates ohne USB:
+Sobald die Firmware läuft und im Netz ist, gehen weitere Updates ohne USB — **über LAN
+genauso wie über WLAN**:
 
 `http://<IP>/update` (Seite **Einstellungen**) → Firmware hochladen. Datei ist die
 **`ota.bin`** aus den Releases (bzw. die selbst gebaute `firmware.bin`).
@@ -54,6 +61,9 @@ curl -F "f=@ESP32smartmeter-<version>-ota.bin" http://<IP>/update
 
 > Ein OTA-Update ersetzt **nur die Firmware**, nicht den NVS — WLAN-Zugangsdaten
 > und Einstellungen bleiben erhalten.
+
+> Über LAN ist das der bequemste Weg: ein 1,3-MB-Image ist in rund 14 s durch, danach
+> meldet sich das Gerät binnen Sekunden wieder (`reset_reason` steht dann auf `sw`).
 
 ---
 
@@ -72,12 +82,19 @@ ein eigenes Setup-WLAN eingerichtet und im NVS gespeichert:
 Später lässt sich das WLAN unter **Einstellungen → WLAN → „WLAN vergessen"**
 zurücksetzen (öffnet nach dem Neustart wieder das Setup-Portal).
 
+> **Mit LAN-Kabel (ab FW 1.6.0) entfällt dieser Schritt.** In der Default-Betriebsart
+> *Auto* fährt der ESP zuerst das Ethernet hoch: Bekommt er darüber eine IP, ist er sofort
+> erreichbar und öffnet gar kein Setup-Portal — die IP steht dann im Router bzw. auf der
+> Startseite unter **Verbindung → Netz**. Das Portal kommt nur, wenn binnen 8 s keine
+> LAN-IP da ist *und* keine WLAN-Zugangsdaten hinterlegt sind.
+
 ---
 
 ## 4. Inbetriebnahme
 
-1. **Erster Flash per USB** (danach reicht das Web-OTA unter `/update`).
-2. WLAN über das **Setup-Portal** einrichten (Abschnitt 3).
+1. **Erster Flash per USB** (danach reicht das Web-OTA unter `/update`, auch über LAN).
+2. Netz herstellen: **entweder** Kabel stecken (Betriebsart *Auto* holt sich direkt eine
+   LAN-IP) **oder** WLAN über das **Setup-Portal** einrichten (Abschnitt 3).
 3. IP-Adresse herausfinden (Router-Liste oder serieller monitor, wenn der ESP noch am Rechner angeschlossen ist).
 4. Im Browser `http://<IP>/` öffnen → Live-Anzeige; `http://<IP>/api` liefert das
    rohe JSON (gut zum Debuggen).

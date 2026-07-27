@@ -48,16 +48,15 @@ jobs:
           set -euo pipefail
           V="${{ steps.ver.outputs.version }}"
           B=.pio/build/esp32dev
-          BOOTAPP="$(find ~/.platformio/packages -path '*/tools/partitions/boot_app0.bin' -print -quit)"
-          ESPTOOL="$(find ~/.platformio/packages -name esptool.py -print -quit)"
+          # Seit dem Core-3.x-Port (pioarduino, FW 1.6.0) erzeugt der Build die
+          # factory-Datei selbst: Bootloader + Partitionstabelle + boot_app0 + App,
+          # ab Offset 0x0 flashbar. Der frühere esptool-merge_bin-Aufruf entfällt
+          # damit — er suchte esptool.py über einen Pfad-Glob und benutzte die alten
+          # Unterstrich-Kommandos, beides ist mit esptool v5 nicht mehr verlässlich.
+          test -f "$B/firmware.factory.bin"
           mkdir -p dist
-          cp "$B/firmware.bin" "dist/ESP32smartmeter-${V}-ota.bin"
-          python "$ESPTOOL" --chip esp32 merge_bin -o "dist/ESP32smartmeter-${V}-factory.bin" \
-            --flash_mode dio --flash_freq 40m --flash_size 4MB \
-            0x1000  "$B/bootloader.bin" \
-            0x8000  "$B/partitions.bin" \
-            0xe000  "$BOOTAPP" \
-            0x10000 "$B/firmware.bin"
+          cp "$B/firmware.bin"         "dist/ESP32smartmeter-${V}-ota.bin"
+          cp "$B/firmware.factory.bin" "dist/ESP32smartmeter-${V}-factory.bin"
           echo "SHA256:"; sha256sum dist/*.bin
 
       - name: GitHub-Release veröffentlichen

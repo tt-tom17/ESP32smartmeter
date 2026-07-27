@@ -114,6 +114,21 @@ void handleApi(AsyncWebServerRequest* req) {
   j += "\"uptime_s\":" + String(millis() / 1000);
   j += ",\"rssi\":" + String(WiFi.RSSI());
   j += ",\"wifi_ssid\":\"" + jsonEscape(wifiSsid) + "\"";
+  j += ",\"wifi\":" + String(wifiUp() ? "true" : "false");
+  // Netz: welches Interface trägt gerade, welche Policy ist eingestellt (0/1/2).
+  j += ",\"net_mode\":" + String(netMode);
+  j += ",\"net_if\":\"" + String(netIfName()) + "\"";
+  j += ",\"ip\":\"" + netIP().toString() + "\"";
+  j += ",\"eth\":{\"enabled\":" + String(ethEnabled() ? "true" : "false");
+  j += ",\"link\":" + String(ethLink ? "true" : "false");
+  j += ",\"up\":" + String(ethUp() ? "true" : "false");
+  if (ethStarted) {
+    j += ",\"ip\":\"" + ETH.localIP().toString() + "\"";
+    j += ",\"speed\":" + String(ETH.linkSpeed());
+    j += ",\"duplex\":\"" + String(ETH.fullDuplex() ? "full" : "half") + "\"";
+    j += ",\"mac\":\"" + jsonEscape(ETH.macAddress()) + "\"";
+  }
+  j += "}";
   j += ",\"mqtt\":" + String(mqtt.connected() ? "true" : "false");
   j += ",\"mqtt_en\":" + String(mqttEnabled ? "true" : "false");
   j += ",\"mqtt_root\":\"" + jsonEscape(mqttRoot) + "\"";
@@ -125,6 +140,8 @@ void handleApi(AsyncWebServerRequest* req) {
   j += ",\"fw_build\":\"" + jsonEscape(FW_BUILD) + "\"";
   j += ",\"reset_reason\":\"" + String(resetReasonStr()) + "\"";
   j += ",\"reboot_by\":\"" + jsonEscape(rebootBy) + "\"";   // "net-watchdog" nach Selbstheilung, sonst "none"
+  // loop()-Abschnitt, in dem der letzte Watchdog/Panic zuschlug ("" = kein Crash-Boot)
+  j += ",\"wdt_where\":\"" + jsonEscape(wdtWhere) + "\"";
   j += ",\"lastcrash\":" + lastCrashJson;
 
   // Strom
@@ -181,13 +198,16 @@ void handleApi(AsyncWebServerRequest* req) {
 // Erlaubte GPIOs — deckungsgleich mit INPINS/OUTPINS der Weboberfläche (web_pages.h).
 // Nicht enthalten: GPIO6–11 (interner SPI-Flash), GPIO20/24/28–31 (auf dem Board nicht
 // herausgeführt), GPIO1/3 (UART0 = serielle Konsole) und die Strapping-Pins GPIO0/2/12/15.
-// Ohne diese Prüfung könnte ein direkter API-Aufruf (curl) das Gerät unbrauchbar machen.
+// Seit 1.6.0 ebenfalls gesperrt: die sechs W5500-Pins 18/19/23 (SPI-Bus), 21 (CS),
+// 26 (Reset) und 34 (IRQ) — sie hängen fest am Ethernet-Modul, auch im Modus "nur WLAN"
+// (die Verdrahtung bleibt ja bestehen). Läge ein Zählerkopf darauf, würde er den SPI-Bus
+// stören und das LAN mitreißen. Ohne diese Prüfung könnte ein direkter API-Aufruf (curl)
+// das Gerät unbrauchbar machen.
 bool validInPin(int g) {
   switch (g) {
-    case 16: case 17: case 18: case 19:
-    case 21: case 22: case 23: case 25:
-    case 26: case 27: case 32: case 33:
-    case 34: case 35: case 36: case 39:
+    case 16: case 17: case 22: case 25:
+    case 27: case 32: case 33: case 35:
+    case 36: case 39:
       return true;
     default:
       return false;
@@ -264,6 +284,24 @@ void handleSetSendLed(AsyncWebServerRequest* req) {
   if (reqHas(req, "gpio")) { int g = reqArg(req, "gpio").toInt(); if (validOutPin(g)) { sendledPin = g; prefs.putUChar("sled_pin", g); changed = true; } }
   if (reqHas(req, "lvl"))  { sendledLevel = reqArg(req, "lvl").toInt() != 0; prefs.putUChar("sled_lvl", sendledLevel ? 1 : 0); changed = true; }
   if (changed) applySendLedPending = true;       // GPIO in loop() setzen (thread-safe)
+  req->send(200, "text/plain", "ok");
+}
+
+// Netz-Policy setzen: mode=0 (auto) / 1 (nur LAN) / 2 (nur WLAN).
+// Die Umschaltung greift bewusst erst nach einem Neustart — Interfaces zur Laufzeit
+// zu wechseln (ETH.begin/WiFi.mode) ist beim ESP32 fragil, ein Reboot kostet Sekunden.
+// Wie überall gilt: der Web-Handler setzt nur den Merker, neu gestartet wird aus loop().
+void handleSetNet(AsyncWebServerRequest* req) {
+  if (reqHas(req, "mode")) {
+    int m = reqArg(req, "mode").toInt();
+    if (m >= NET_MODE_AUTO && m <= NET_MODE_WIFI && (uint8_t)m != netMode) {
+      netMode = (uint8_t)m;
+      prefs.putUChar("net_mode", netMode);
+      Serial.printf("[CFG] Netz-Modus -> %s, Neustart\n",
+                    netMode == NET_MODE_ETH ? "nur LAN" : (netMode == NET_MODE_WIFI ? "nur WLAN" : "auto"));
+      restartAt = millis() + 800;              // Neustart aus loop() heraus
+    }
+  }
   req->send(200, "text/plain", "ok");
 }
 
@@ -388,6 +426,7 @@ void setupWeb() {
   server.on("/setstrom",  HTTP_GET, handleSetStrom);
   server.on("/setsendled",HTTP_GET, handleSetSendLed);
   server.on("/setmqtt",   HTTP_GET, handleSetMqtt);
+  server.on("/setnet",    HTTP_GET, handleSetNet);
   server.on("/read",      HTTP_GET, [](AsyncWebServerRequest* r){ reqRead = true; r->send(200, "text/plain", "ok"); });
   server.on("/clearcrash",HTTP_GET, [](AsyncWebServerRequest* r){ clearCrashReq = true; r->send(200, "text/plain", "ok"); });
   server.on("/toggle",    HTTP_GET, [](AsyncWebServerRequest* r){ reqIdx = 1 - reqIdx; r->send(200, "text/plain", HEAT_REQ_NAMES[reqIdx]); });

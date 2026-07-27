@@ -34,13 +34,58 @@ static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000; // STA-Connect-Timeo
 // Ein FRISCHES Gerät (keine Creds) lässt das Portal dauerhaft offen.
 static const unsigned long AP_PORTAL_TIMEOUT_MS = 90000;    // 90 s
 
+// ─── Ethernet (W5500 über SPI) + Netz-Policy ──────────────────────────────────
+// Das W5500-Modul hängt am freien VSPI-Vierer; als SPI-Host dient SPI2 (HSPI), die
+// Pins werden per GPIO-Matrix dorthin geroutet — bei 20 MHz unkritisch. Belegt sind
+// damit 18/19/23 (Bus) sowie 21 (CS), 34 (IRQ-Draht, s. u.) und 26 (Reset).
+// WICHTIG: Diese sechs GPIOs stehen dadurch NICHT mehr für Zählerköpfe zur Verfügung
+// und sind aus validInPin()/validOutPin() (web.h) sowie INPINS/OUTPINS (web_pages.h)
+// entfernt. Modul-VCC an 5V ODER 3V3 — das Modul hat einen eigenen AMS1117-3.3;
+// 5 V ist vorzuziehen, das entlastet den Regler des ESP-Boards. Signale 5-V-tolerant.
+#define W5500_SCK_PIN   18
+#define W5500_MISO_PIN  19
+#define W5500_MOSI_PIN  23
+#define W5500_CS_PIN    21
+// IRQ bewusst AUS (-1): der Treiber pollt dann alle 10 ms (ETH_SPI_SUPPORTS_NO_IRQ,
+// Arduino-Core 3.x) — bei unserer Datenmenge unkritisch. Grund: der als INT verdrahtete
+// GPIO34 ist input-only und hat keinen internen Pull-up; ETH.begin() quittiert das mit
+// "gpio_pullup_en(85): GPIO number error". Am 26.07.2026 im Feld verifiziert, dass LAN
+// ohne IRQ trägt. Der Draht darf am Modul bleiben, deshalb bleibt 34 oben gesperrt.
+#define W5500_IRQ_PIN   -1
+#define W5500_RST_PIN   26
+#define W5500_PHY_ADDR  1
+// 8 statt 20 MHz: bei 20 MHz brach die SPI-Strecke am 26.07.2026 unter Volllast
+// (Web-OTA, 1,3 MB) reproduzierbar zusammen — "emac_w5500_receive: write RX RD failed" /
+// "w5500_send_command: read SCR failed", im Leerlauf dagegen fehlerfrei. Typisch für
+// fliegende Verdrahtung ohne kurzen GND-Rückweg. 8 MHz reichen für 100 Mbit/s Ethernet
+// bei unserer Datenmenge um Größenordnungen; erst bei sauberer Platine wieder erhöhen.
+#define W5500_SPI_MHZ   8
+
+// Netz-Policy, im Web umschaltbar (NVS "net_mode"). Ein Wechsel greift erst nach
+// einem Neustart — Interfaces zur Laufzeit umzuschalten ist beim ESP32 fragil, und
+// der Neustart kostet hier nur Sekunden.
+#define NET_MODE_AUTO 0   // LAN bevorzugt, WLAN als Rückfall (Default)
+#define NET_MODE_ETH  1   // nur LAN
+#define NET_MODE_WIFI 2   // nur WLAN — der W5500 wird gar nicht erst initialisiert
+#define NET_MODE_DEF  NET_MODE_AUTO
+// Auto-Modus: so lange nach dem Start auf eine LAN-IP warten, bevor zusätzlich das
+// WLAN hochgefahren wird. Link-Aushandlung + DHCP brauchen typisch 2–4 s; 8 s geben
+// Reserve, ohne den Start spürbar zu verzögern (die Zähler laufen derweil weiter).
+static const unsigned long ETH_WAIT_MS = 8000;
+// Rettungsanker für den Modus "nur LAN": Kommt binnen dieser Zeit keine LAN-IP
+// (Kabel ab, Switch tot, Modul defekt), öffnet der ESP das Setup-Portal. Ohne das
+// wäre das Gerät nach einer Fehlkonfiguration nur noch per USB erreichbar.
+static const unsigned long ETH_LOCKOUT_MS = 120000;   // 2 min
+
 // ─── Selbstheilung: Watchdogs (gegen stummes Hängen ohne Reboot) ──────────────
-// (A) Verbindungs-Watchdog: Ist das WLAN im laufenden STA-Betrieb länger als diese
-// Zeit DURCHGEHEND weg, holt ein bloßes WiFi.begin() den (oft verklemmten) WLAN-
-// Treiber nicht zurück -> gezielter Neustart als Selbstheilung (wie der apMode-
-// Timeout). Das verwandelt einen stummen Ausfall (>1 h beobachtet) in eine Lücke
-// von Sekunden. Grund wird über den Reboot als /api "reboot_by" sichtbar gemacht.
-static const unsigned long NET_WATCHDOG_MS = 300000UL;      // 5 min WLAN weg -> Reboot
+// (A) Verbindungs-Watchdog: Ist im laufenden Betrieb länger als diese Zeit DURCHGEHEND
+// KEIN Interface oben (weder LAN noch WLAN), holt ein bloßes WiFi.begin() den (oft
+// verklemmten) WLAN-Treiber nicht zurück -> gezielter Neustart als Selbstheilung (wie
+// der apMode-Timeout). Das verwandelt einen stummen Ausfall (>1 h beobachtet) in eine
+// Lücke von Sekunden. Grund wird über den Reboot als /api "reboot_by" sichtbar gemacht.
+// Seit 1.6.0 zählt "irgendein Interface up" — bei gestecktem Kabel deckt das LAN einen
+// WLAN-Ausfall also ab, ohne dass der Watchdog anschlägt.
+static const unsigned long NET_WATCHDOG_MS = 300000UL;      // 5 min ohne Netz -> Reboot
 // (B) Task-Watchdog (TWDT): rebootet, wenn loop() länger als dies NICHT zurückkehrt
 // (echte Einzel-Blockade, z.B. hängendes Serial.flush()); reset_reason wird task_wdt.
 // Muss über der längsten legitimen loop()-Dauer liegen (WLAN-Connect-Busy-Wait 15 s
@@ -60,7 +105,7 @@ static const uint16_t MQTT_SOCKET_TIMEOUT_S = 4;
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.5.0"
+#define FW_VERSION  "1.6.0"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Zeit / NTP ───────────────────────────────────────────────────────────────
