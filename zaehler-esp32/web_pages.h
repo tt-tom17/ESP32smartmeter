@@ -34,12 +34,14 @@ input:not([type=number]):not([type=file]){width:170px}
 .on{background:#14532d;color:#bbf7d0}.off{background:#7f1d1d;color:#fecaca}
 a.btnlink{display:block;text-align:center;background:#334155;color:#fff;text-decoration:none;padding:14px;border-radius:10px;margin:10px 0 2px;font-weight:600}
 .foot{text-align:center;color:#64748b;font-size:.78rem;margin:16px 12px 24px}
+.err{display:none;background:#7f1d1d;color:#fecaca;margin:12px;padding:11px 14px;border-radius:10px;font-size:.85rem;overflow-wrap:anywhere}
 )CSS";
 
 const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Zähler</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/ class=active>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
+<div id=err class=err></div>
 <div class=card><h2>Verbindung</h2>
  <div class=row><span>Netz</span><b id=nif>–</b></div>
  <div class=row><span>WLAN</span><b id=rssi>–</b></div>
@@ -60,6 +62,10 @@ const char MAIN_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <script>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
+// Poll-Fehler ANZEIGEN statt verschlucken: ein leeres catch(e){} hat am 01.08.2026 aus
+// ungültigem /api-JSON eine scheinbar tote Seite gemacht — alle Felder blieben stumm
+// auf "–", ohne jeden Hinweis. fail() ohne Argument blendet das Banner wieder aus.
+function fail(e){if(!e){err.style.display='none';return;}err.textContent='⚠ Anzeige gestört, /api nicht lesbar: '+(e.message||e);err.style.display='block';}
 async function tick(){try{const d=await(await fetch('/api')).json();
  nif.textContent=(d.net_if=='eth'?'LAN':(d.net_if=='wifi'?'WLAN':'getrennt'))+(d.ip&&d.net_if!='none'?' · '+d.ip:'');
  rssi.textContent=d.wifi?(d.rssi+' dBm'):'–';   // RSSI ist nur im WLAN-Betrieb aussagekräftig
@@ -75,7 +81,8 @@ async function tick(){try{const d=await(await fetch('/api')).json();
  h68.textContent=v;
  pill(hs,d.heat.enabled&&d.heat.status.indexOf('ok')==0,d.heat.enabled?d.heat.status:'aus');
  next.textContent=!d.heat.enabled?'aus':(d.heat.time_ok?d.heat.next_at+' (in '+fmtNext(d.heat.next_read_s)+')':fmtNext(d.heat.next_read_s));
-}catch(e){}}
+ fail();
+}catch(e){fail(e);}}
 tick();setInterval(tick,3000);
 </script></body></html>)HTML";
 
@@ -83,6 +90,7 @@ const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Strom</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom class=active>Strom</a><a href=/waerme>Wärme</a><a href=/update>Einstellungen</a></nav>
+<div id=err class=err></div>
 <div class=card><h2>⚡ Stromzähler</h2>
  <div class=row><span>Status</span><span id=ss class=pill>–</span></div>
  <div class=row><span>Leistung</span><b id=lw>–</b></div>
@@ -91,12 +99,14 @@ const char STROM_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <div class=card><h2>Alle Werte</h2><table id=tbl></table></div>
 <script>
 function pill(el,on,t){el.textContent=t;el.className='pill '+(on?'on':'off');}
+function fail(e){if(!e){err.style.display='none';return;}err.textContent='⚠ Anzeige gestört, /api nicht lesbar: '+(e.message||e);err.style.display='block';}
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom;
  pill(ss,s.enabled&&s.status=='ok',s.enabled?s.status:'aus');
  let h='';for(const x of s.codes)h+='<tr><td>'+x.code+'</td><td><b>'+x.value+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
  bz.textContent=(s.bezug_kwh??'–')+' kWh';es.textContent=(s.einspeisung_kwh??'–')+' kWh';lw.textContent=(s.leistung_w??'–')+' W';
-}catch(e){}}
+ fail();
+}catch(e){fail(e);}}
 tick();setInterval(tick,3000);
 </script></body></html>)HTML";
 
@@ -104,6 +114,7 @@ const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Wärme</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme class=active>Wärme</a><a href=/update>Einstellungen</a></nav>
+<div id=err class=err></div>
 <div class=card><h2>🔥 Wärmezähler</h2>
  <button class=alt onclick="cmd('/read')">Jetzt lesen</button>
  <div class=row><span>nächste Lesung</span><b id=next>–</b></div></div>
@@ -117,13 +128,15 @@ const char WAERME_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <script>
 function fmtNext(s){var h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+'h '+m+'m';}
 function cmd(u){fetch(u).then(()=>setTimeout(tick,500));}
+function fail(e){if(!e){err.style.display='none';return;}err.textContent='⚠ Anzeige gestört, /api nicht lesbar: '+(e.message||e);err.style.display='block';}
 async function tick(){try{const d=await(await fetch('/api')).json();const w=d.heat;
  next.textContent=!w.enabled?'aus':(w.time_ok?w.next_at+' (in '+fmtNext(w.next_read_s)+')':fmtNext(w.next_read_s));
  let h='';for(const x of w.codes)h+='<tr><td>'+x.code+'</td><td><b>'+(x.raw||x.value)+'</b></td><td class=u>'+(x.unit||'')+'</td></tr>';
  tbl.innerHTML=h||'<tr><td>– (keine Daten)</td></tr>';
  st.textContent=w.status;ident.textContent=w.ident||'–';req.textContent=w.request;
  cnt.textContent=w.ok+' / '+w.reads;len.textContent=w.last_len+' B';
-}catch(e){}}
+ fail();
+}catch(e){fail(e);}}
 tick();setInterval(tick,3000);
 </script></body></html>)HTML";
 
@@ -131,6 +144,7 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=de><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Einstellungen</title><link rel=stylesheet href=/style.css><link rel=icon href="data:,"></head><body>
 <nav><a href=/>Start</a><a href=/strom>Strom</a><a href=/waerme>Wärme</a><a href=/update class=active>Einstellungen</a></nav>
+<div id=err class=err></div>
 <div class=card><h2>⚡ Strom</h2>
  <div class=row><span>Auslesen</span><button id=sen onclick=sToggle()>–</button></div>
  <div class=row><span>Lesekopf-GPIO</span><select id=sgpio></select></div>
@@ -208,6 +222,7 @@ function nSave(){if(!confirm('Betriebsart ändern? Der Zähler startet dazu neu.
  fetch('/setnet?mode='+nmode.value).then(()=>{nmsg.textContent='gespeichert – Neustart…';});}
 function wreset(){if(!confirm('WLAN-Daten löschen und neu einrichten? Der Zähler startet neu und öffnet das Setup-WLAN „Zaehler-Setup".'))return;
  fetch('/wifireset').then(()=>{alert('Neustart… bitte mit dem WLAN „Zaehler-Setup" verbinden.');});}
+function fail(e){if(!e){err.style.display='none';return;}err.textContent='⚠ Anzeige gestört, /api nicht lesbar: '+(e.message||e);err.style.display='block';}
 let inited=false;   // Eingabefelder NUR einmal befüllen, sonst überschreibt der Poll die Eingabe
 async function tick(){try{const d=await(await fetch('/api')).json();const s=d.strom,w=d.heat;
  // Live-Status (keine Eingabefelder) — darf jeder Poll aktualisieren:
@@ -230,7 +245,8 @@ async function tick(){try{const d=await(await fetch('/api')).json();const s=d.st
   mroot.value=d.mqtt_root||'';mhost.value=d.mqtt_host||'';mport.value=d.mqtt_port||1883;muser.value=d.mqtt_user||'';
   if(d.net_mode!=null)nmode.value=d.net_mode;
  }
-}catch(e){}}
+ fail();
+}catch(e){fail(e);}}
 tick();setInterval(tick,3000);
 function go(){var f=document.getElementById('file').files[0];if(!f)return;
 var x=new XMLHttpRequest(),d=new FormData();d.append('f',f);

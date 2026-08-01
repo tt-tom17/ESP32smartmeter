@@ -105,7 +105,7 @@ static const uint16_t MQTT_SOCKET_TIMEOUT_S = 4;
 // Der Build-Zeitstempel (__DATE__/__TIME__) aktualisiert sich automatisch beim
 // Kompilieren und zeigt, ob ein Flash/OTA wirklich angekommen ist. Beides wird
 // auf der Startseite gezeigt.
-#define FW_VERSION  "1.6.0"
+#define FW_VERSION  "1.6.1"
 #define FW_BUILD    (__DATE__ " " __TIME__)
 
 // ─── Zeit / NTP ───────────────────────────────────────────────────────────────
