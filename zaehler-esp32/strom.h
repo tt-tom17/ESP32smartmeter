@@ -216,7 +216,15 @@ void applyStrom() {
   if (stromEnabled) {
     Sml.setRxBufferSize(4096);
     Sml.begin(9600, SERIAL_8N1, stromRxPin, -1, SML_INVERT);
-    pinMode(stromRxPin, INPUT_PULLUP);  // Hichi-Open-Collector: RX-Leitung nicht floaten lassen
+    // Hichi-Open-Collector: RX-Leitung nicht floaten lassen.
+    // ⚠️ Hier KEIN pinMode(stromRxPin, INPUT_PULLUP): ab Arduino-Core 3.x meldet pinMode()
+    // den Pin im Peripheral Manager von seiner bisherigen Peripherie ab
+    // (perimanClearPinBus → _uartDetachBus_RX) und trennt ihn damit wieder vom UART —
+    // der Zähler kommt dann gar nicht mehr an (crc_ok und crc_err bleiben beide 0).
+    // gpio_pullup_en() setzt nur den Pullup und lässt die Bus-Zuordnung intakt; genau so
+    // macht es der Core selbst für CTS. Nötig bleibt der Pullup, weil der Core ab IDF 5.4
+    // für RX-Pins nur noch gpio_input_enable() aufruft und den Pullup nicht mehr setzt.
+    gpio_pullup_en((gpio_num_t)stromRxPin);
     stromStatus = "init";
     Serial.printf("[CFG] Strom: AN, GPIO%u\n", stromRxPin);
   } else {
