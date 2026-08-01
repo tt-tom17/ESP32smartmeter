@@ -7,8 +7,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+// String-Escaping nach RFC 8259: Anführungszeichen, Backslash und ALLE Steuerzeichen
+// unter 0x20. Letztere fehlten bis 1.6.0 — ein korrupter Core-Dump schrieb rohe
+// Steuerzeichen in /api, damit war die Antwort kein gültiges JSON mehr und die
+// Web-UI blieb komplett leer (01.08.2026). Betrifft genauso fremde WLAN-SSIDs in /scan.json.
+// Bytes ab 0x80 gehen unverändert durch, damit gültiges UTF-8 (Umlaute in SSID/Topic)
+// erhalten bleibt — daher der Cast auf uint8_t: `char` ist auf Xtensa signed, ein
+// direkter Vergleich `c < 0x20` würde sonst jedes UTF-8-Folgebyte zerlegen.
 String jsonEscape(const String& s) {
-  String o; for (char c : s) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o;
+  String o;
+  for (char ch : s) {
+    uint8_t c = (uint8_t)ch;
+    switch (c) {
+      case '"':  o += "\\\""; break;
+      case '\\': o += "\\\\"; break;
+      case '\b': o += "\\b";  break;
+      case '\f': o += "\\f";  break;
+      case '\n': o += "\\n";  break;
+      case '\r': o += "\\r";  break;
+      case '\t': o += "\\t";  break;
+      default:
+        if (c < 0x20) { char u[7]; snprintf(u, sizeof u, "\\u%04x", c); o += u; }
+        else          { o += ch; }
+    }
+  }
+  return o;
+}
+
+// Rohbytes aus der Core-Dump-Summary lesbar machen. Bei `corrupted: true` — auf dem
+// D1 Mini .125 ist das IMMER der Fall — steht dort beliebiger Speichermüll, auch
+// Bytes ab 0x80, die als UTF-8 ungültig wären. Alles außerhalb des druckbaren ASCII
+// wird darum zu '.', wie in einem Hexdump. jsonEscape() bleibt trotzdem nötig:
+// Anführungszeichen und Backslash sind druckbar und müssen escaped werden.
+String dumpPrintable(const char* p, size_t n) {
+  String o;
+  for (size_t i = 0; i < n && p[i]; i++) {
+    uint8_t c = (uint8_t)p[i];
+    o += (c >= 0x20 && c < 0x7f) ? (char)c : '.';
+  }
+  return o;
 }
 
 // Grund des letzten Resets (esp_reset_reason() ist über die gesamte Laufzeit
@@ -61,7 +98,7 @@ void captureLastCrash() {
     char sha[17]; memcpy(sha, s->app_elf_sha256, shaLen); sha[shaLen] = '\0';
     String j = "{\"present\":true";
     j += ",\"stale\":" + String(bootFromCrash() ? "false" : "true");   // gehört der Dump zum aktuellen Boot?
-    j += ",\"task\":\"" + jsonEscape(task) + "\"";
+    j += ",\"task\":\"" + jsonEscape(dumpPrintable(task, 16)) + "\"";
     j += ",\"pc\":\"0x" + String(s->exc_pc, HEX) + "\"";
     j += ",\"cause\":" + String(s->ex_info.exc_cause);
     j += ",\"vaddr\":\"0x" + String(s->ex_info.exc_vaddr, HEX) + "\"";
@@ -73,7 +110,7 @@ void captureLastCrash() {
       if (i) j += ",";
       j += "\"0x" + String(s->exc_bt_info.bt[i], HEX) + "\"";
     }
-    j += "],\"elf_sha\":\"" + jsonEscape(sha) + "\"}";
+    j += "],\"elf_sha\":\"" + jsonEscape(dumpPrintable(sha, shaLen)) + "\"}";
     lastCrashJson = j;
   }
   free(s);
