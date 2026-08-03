@@ -39,7 +39,7 @@ direkt per HTTP — praktisch für Skripte, Automatisierung oder schnelles Teste
   bleiben unverändert (partielles Update). `curl "http://<IP>/setheat?en=0"` schaltet nur
   das Auslesen aus und lässt Intervall/GPIOs in Ruhe.
 - **Antwort der Setter** ist schlicht `text/plain` mit `ok`. Nur `/api` liefert JSON.
-- **`<IP>`** ist die Adresse des Geräts im WLAN (im Footer/Router ablesbar, z. B.
+- **`<IP>`** ist die Adresse des Geräts im Netzwerk (im Footer/Router ablesbar, z. B.
   `192.168.178.217`). Werte werden im NVS gespeichert und überstehen einen Reboot.
 
 **Endpunkte:**
